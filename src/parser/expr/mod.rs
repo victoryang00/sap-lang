@@ -19,6 +19,7 @@ pub(crate) mod literal;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+    Quoted(Box<Expr>),
     Block(Vec<Expr>),
     Literal(Literal),
     Ident(Vec<String>),
@@ -216,6 +217,10 @@ fn expr_ll(l: Expr, r: &str) -> IResult<&str, Expr> {
 pub(crate) fn parse_expr(s: &str) -> IResult<&str, Expr> {
     let (r, l) = alt((
         parse_closure,
+        map(
+            tuple((tag("("), opt(ws), parse_expr, opt(ws), tag(")"))),
+            |(_, _, e, _, _)| e,
+        ),
         map(literal, |l| Expr::Literal(l)),
         map(parse_object, |b| Expr::Object(b)),
         map(parse_block, |b| Expr::Block(b)),

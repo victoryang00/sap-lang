@@ -229,6 +229,7 @@ pub fn type_check_expr(
     context: Rc<RefCell<TypeCheckContext>>,
 ) -> Result<Type, &'static str> {
     match e {
+        Expr::Quoted(e) => type_check_expr(e, context),
         Expr::Block(es) => {
             let ct = Rc::new(RefCell::new(TypeCheckContext::new_with(context.clone())));
             let tys = es
@@ -385,71 +386,56 @@ pub fn type_check_expr(
         // TODO: FUCK ME
         Expr::Bind(a, b) => {
             let mut aaa = type_check_expr(a, context.clone())?;
-            match aaa {
-                Type::Object(o) => match b.clone() {
-                    box Expr::Call(i, mut bb) => {
-                        let mut c = vec![*a.clone()];
-                        c.append(&mut bb);
-                        bb = c;
-                        type_check_expr(b, context)
-                    }
-                    box Expr::Ident(s) => Ok(o.get(s.last().unwrap()).unwrap().clone()),
-                    _ => Err("WTF"),
-                },
-                Type::Function(aaa, mut bbb) => match b.clone() {
-                    box Expr::Call(i, mut bb) => {
-                        let mut c = vec![*a.clone()];
-                        c.append(&mut bb);
-                        bb = c;
-                        type_check_expr(b, context)
-                    }
-                    box Expr::Ident(s) => {
-                        if s.len() > 1 {
-                            unimplemented!()
+            let mut bbb = type_check_expr(b, context.clone())?;
+            match bbb {
+                Type::Any => Ok(Type::Any),
+                Type::Function(mut a, b) => match aaa {
+                    Type::Function(aa, mut bb) => {
+                        if a.len() < 1 {
+                            Err("no enought args")
                         } else {
-                            if context
-                                .deref()
-                                .borrow_mut()
-                                .free_var
-                                .contains_key(s.last().unwrap())
-                            {
-                                let ptr = context.deref().borrow_mut().deref_mut() as *mut _;
-                                if let Some(Type::Function(_aaa, _bbb)) = context
-                                    .deref()
-                                    .borrow_mut()
-                                    .free_var
-                                    .get_mut(s.last().unwrap())
-                                {
-                                    let (_h, _t) = _aaa.split_at_mut(1);
-                                    let r = unsafe { type_elab(ptr, &mut _h[0], bbb.as_mut()) }
-                                        .unwrap();
-                                    Ok(Type::Function(
-                                        _t.iter().map(|s| s.clone()).collect::<Vec<_>>(),
-                                        _bbb.clone(),
-                                    ))
-                                } else {
-                                    Err("Is not Even A FUNCTION!")
-                                }
-                            } else {
-                                Err("WTF")
+                            let mut aa = aa;
+                            for i in 1..a.len() {
+                                aa.push(a[i].clone());
                             }
+                            let r = match unsafe {
+                                type_elab(
+                                    context.clone().deref().borrow_mut().deref_mut(),
+                                    bb.as_mut(),
+                                    a.get_mut(0).unwrap(),
+                                )
+                            } {
+                                Ok(_) => Ok(Type::Function(aa, b)),
+                                Err(_) => Err("Type not matched"),
+                            };
+                            r
                         }
                     }
-                    box mut c @ Expr::Bind(_, _) => {
-                        let inner = type_check_expr(&mut c, context)?;
-                        todo!("not implemented yet")
+                    mut nonf => {
+                        if a.len() < 1 {
+                            Err("no enought args")
+                        } else {
+                            let r = match unsafe {
+                                type_elab(
+                                    context.clone().deref().borrow_mut().deref_mut(),
+                                    a.get_mut(0).unwrap(),
+                                    &mut nonf,
+                                )
+                            } {
+                                Ok(_) => Ok(Type::Function(
+                                    a[1..].iter().map(|x| x.clone()).collect::<Vec<_>>(),
+                                    b,
+                                )),
+                                Err(_) => Err("Type not matched"),
+                            };
+                            r
+                        }
                     }
-                    _ => Err("Could not dot attr for function"),
                 },
-                _ => match b.clone() {
-                    box Expr::Call(i, mut bb) => {
-                        let mut c = vec![*a.clone()];
-                        c.append(&mut bb);
-                        bb = c;
-                        type_check_expr(b, context)
-                    }
-                    _ => Err("Fuck ME"),
-                },
+                Type::Alias(a) => {
+                    todo!()
+                }
+                _ => Err("not bindable"),
             }
         }
         // TODO: elab index
