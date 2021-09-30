@@ -1,7 +1,7 @@
 use crate::parser::expr::Expr;
 use crate::parser::TopLevel;
 use crate::parser::{expr::literal::Number, ty::Type};
-use std::borrow::BorrowMut;
+use std::borrow::{Borrow, BorrowMut};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
@@ -325,15 +325,14 @@ pub fn type_check_expr(
         }
         Expr::MultiIf(a, b) => todo!(),
         Expr::For(_, _, _) => Ok(Type::Any),
-        Expr::Call(a, b) => {
-            let aaa = type_check_expr(a, context.clone())?;
-            let mut bbbs = b
+        Expr::Call(func, args) => {
+            let aaa = type_check_expr(func, context.clone())?;
+            let mut bbbs = args
                 .iter_mut()
                 .map(|b| type_check_expr(b, context.clone()).unwrap_or(Type::Any))
                 .collect::<Vec<_>>();
             match aaa {
                 Type::Any => Ok(Type::Function(bbbs, Box::new(Type::Any))),
-                // TODO: CURRY
                 Type::Function(mut a, b) => {
                     if a.len() > bbbs.len() {
                         for i in 0..bbbs.len() {
@@ -358,7 +357,24 @@ pub fn type_check_expr(
                             .collect::<Vec<_>>();
                         Ok(Type::Function(args, b))
                     } else if a.len() < bbbs.len() {
-                        Err("argument count too big")
+                        if let box f @ Type::Function(_, _) = b {
+                            let mut expr = Expr::Call(
+                                Box::new(Expr::Call(
+                                    func.clone(),
+                                    args[0..a.len()]
+                                        .iter()
+                                        .map(|x| x.clone())
+                                        .collect::<Vec<_>>(),
+                                )),
+                                args[a.len()..]
+                                    .iter()
+                                    .map(|x| x.clone())
+                                    .collect::<Vec<_>>(),
+                            );
+                            type_check_expr(&mut expr, context)
+                        } else {
+                            Err("too much argument")
+                        }
                     } else {
                         for i in 0..a.len() {
                             match unsafe {
