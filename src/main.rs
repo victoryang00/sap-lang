@@ -49,7 +49,10 @@ fn main() {
                     println!("{:?}", runner)
                 } else {
                     match parse_top_level(line.as_str()) {
-                        Ok((_, r)) => {
+                        Ok((l, r)) => {
+                            if l != "" {
+                                println!("\x1b[1;31munable to parse substring:\x1b[0;0m {:?}", l);
+                            }
                             println!("parsed expr: {:?}", r);
                             match r {
                                 parser::TopLevel::Expr(mut e) => {
