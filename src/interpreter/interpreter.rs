@@ -6,7 +6,10 @@ use std::{
     rc::Rc,
 };
 
-use crate::parser::expr::{literal::Number, Expr};
+use crate::parser::expr::{
+    literal::{Literal, Number},
+    reverse_bind, Expr,
+};
 
 #[derive(Debug, Clone)]
 pub struct EvalContext {
@@ -81,8 +84,24 @@ impl std::fmt::Debug for Value {
                 .field(arg2)
                 .field(arg3)
                 .finish(),
-            Self::Array(arg0) => f.debug_tuple("Array").field(arg0).finish(),
-            Self::Object(arg0) => f.debug_tuple("Object").field(arg0).finish(),
+            Self::Array(arg0) => f
+                .debug_tuple("Array")
+                .field(
+                    &arg0
+                        .iter()
+                        .map(|t| unsafe { &*t.as_ref().get() })
+                        .collect::<Vec<_>>(),
+                )
+                .finish(),
+            Self::Object(arg0) => f
+                .debug_tuple("Object")
+                .field(
+                    &arg0
+                        .iter()
+                        .map(|(k, v)| (k, unsafe { &*v.as_ref().get() }))
+                        .collect::<BTreeMap<_, _>>(),
+                )
+                .finish(),
             Self::Enum(arg0) => f.debug_tuple("Enum").field(arg0).finish(),
             Self::Null => write!(f, "Null"),
             Self::Error(arg0) => f.debug_tuple("Error").field(arg0).finish(),
@@ -91,7 +110,7 @@ impl std::fmt::Debug for Value {
 }
 
 pub unsafe fn call_func_with_expr(
-    f: &mut Value,
+    f: Value,
     mut args: Vec<Expr>,
     context: Rc<UnsafeCell<EvalContext>>,
 ) -> Result<Rc<UnsafeCell<Value>>, &'static str> {
@@ -100,7 +119,7 @@ pub unsafe fn call_func_with_expr(
         let a = eval_expr(a, context.clone())?;
         v.push(a);
     }
-    if let Value::Function(fargs, h, ct, fb) = f {
+    if let Value::Function(fargs, h, ct, fb) = &mut f.clone() {
         if v.len() > fargs.len() {
             for i in 0..fargs.len() {
                 h.insert(fargs[h.len()].clone(), v[i].clone());
@@ -112,7 +131,7 @@ pub unsafe fn call_func_with_expr(
             let mut r = r.as_ref();
             let mut r = unsafe { &mut *r.get() };
             call_func_with_expr(
-                r,
+                r.clone(),
                 args[h.len()..]
                     .iter()
                     .map(|x| x.clone())
@@ -120,10 +139,30 @@ pub unsafe fn call_func_with_expr(
                 context,
             )
         } else if v.len() < fargs.len() {
-            for i in 0..v.len() {
-                h.insert(fargs[h.len()].clone(), v[i].clone());
-            }
-            Ok(Rc::new(UnsafeCell::new(f.clone())))
+            let mut ctx = EvalContext::new_with(context);
+            ctx.free_var
+                .insert("@func".to_owned(), Rc::new(UnsafeCell::new(f)));
+            let mut expr = Expr::Closure(
+                fargs[v.len()..]
+                    .iter()
+                    .map(|x| (x.clone(), None))
+                    .collect::<Vec<_>>(),
+                None,
+                Box::new(Expr::Call(
+                    Box::new(Expr::Ident(vec!["@func".to_owned()])),
+                    {
+                        let mut vv = args;
+                        vv.append(
+                            &mut fargs[v.len()..]
+                                .iter()
+                                .map(|x| Expr::Ident(vec![x.clone()]))
+                                .collect::<Vec<_>>(),
+                        );
+                        vv
+                    },
+                )),
+            );
+            eval_expr(&mut expr, Rc::new(UnsafeCell::new(ctx)))
         } else {
             let hh = h.clone();
             for i in 0..v.len() {
@@ -136,21 +175,22 @@ pub unsafe fn call_func_with_expr(
             *h = hh;
             r
         }
-    } else if let Value::NativeFunction(name, fargs, h, ff) = f {
+    } else if let Value::NativeFunction(name, fargs, mut h, ff) = f.clone() {
         if v.len() > fargs.len() {
+            let mut hh = h.clone();
+            let mut vv = vec![];
             for i in 0..fargs.len() {
                 h.insert(fargs[h.len()].clone(), v[i].clone());
             }
-            let mut vv = vec![];
             for i in fargs {
-                vv.push(h.get(i).unwrap().clone().as_ref().get())
+                vv.push(h.get(&i).unwrap().clone().as_ref().get())
             }
             let (p, len, _) = vv.into_raw_parts();
             let mut r = Rc::new(ff(len, p));
             let mut r = r.as_ref();
             let mut r = unsafe { &mut *r.get() };
             call_func_with_expr(
-                r,
+                r.clone(),
                 args[h.len()..]
                     .iter()
                     .map(|x| x.clone())
@@ -158,10 +198,30 @@ pub unsafe fn call_func_with_expr(
                 context,
             )
         } else if v.len() < fargs.len() {
-            for i in 0..v.len() {
-                h.insert(fargs[h.len()].clone(), v[i].clone());
-            }
-            Ok(Rc::new(UnsafeCell::new(f.clone())))
+            let mut ctx = EvalContext::new_with(context);
+            ctx.free_var
+                .insert("@func".to_owned(), Rc::new(UnsafeCell::new(f)));
+            let mut expr = Expr::Closure(
+                fargs[v.len()..]
+                    .iter()
+                    .map(|x| (x.clone(), None))
+                    .collect::<Vec<_>>(),
+                None,
+                Box::new(Expr::Call(
+                    Box::new(Expr::Ident(vec!["@func".to_owned()])),
+                    {
+                        let mut vv = args;
+                        vv.append(
+                            &mut fargs[v.len()..]
+                                .iter()
+                                .map(|x| Expr::Ident(vec![x.clone()]))
+                                .collect::<Vec<_>>(),
+                        );
+                        vv
+                    },
+                )),
+            );
+            eval_expr(&mut expr, Rc::new(UnsafeCell::new(ctx)))
         } else {
             let mut hh = h.clone();
             let mut vv = vec![];
@@ -169,11 +229,10 @@ pub unsafe fn call_func_with_expr(
                 h.insert(fargs[h.len()].clone(), v[i].clone());
             }
             for i in fargs {
-                vv.push(h.get(i).unwrap().clone().as_ref().get())
+                vv.push(h.get(&i).unwrap().clone().as_ref().get())
             }
             let (p, len, _) = vv.into_raw_parts();
             let mut r = Rc::new(ff(len, p));
-            *h = hh;
             Ok(r)
         }
     } else {
@@ -185,6 +244,9 @@ pub fn eval_expr(
     e: &mut Expr,
     context: Rc<UnsafeCell<EvalContext>>,
 ) -> Result<Rc<UnsafeCell<Value>>, &'static str> {
+    // println!("trace: expr: {:?} context: {:?}", e, unsafe {
+    //     &*context.as_ref().get()
+    // });
     match e {
         Expr::Quoted(e) => eval_expr(e, context),
         Expr::Block(es) => {
@@ -268,7 +330,7 @@ pub fn eval_expr(
             let f = eval_expr(func, context.clone())?;
             let f = f.as_ref();
             let mut f = unsafe { &mut *f.get() };
-            unsafe { call_func_with_expr(f, args.clone(), context) }
+            unsafe { call_func_with_expr(f.clone(), args.clone(), context) }
         }
         Expr::ErrorHandle(e) => match eval_expr(e.borrow_mut(), context) {
             Ok(e) => Ok(e),
@@ -277,24 +339,56 @@ pub fn eval_expr(
         // TODO: FUCK ME
         Expr::Bind(a, b) => {
             let aaa = eval_expr(a, context.clone())?;
-            let aaa = aaa.as_ref();
-            let mut aaa = unsafe { &mut *aaa.get() };
+            let raaa = aaa.as_ref();
+            let mut raaa = unsafe { &mut *aaa.get() };
 
             let bbb = eval_expr(b, context.clone())?;
-            let bbb = bbb.as_ref();
-            let mut bbb = unsafe { &mut *bbb.get() };
-            match bbb {
-                Value::Function(a, hs, ct, e) => match aaa.clone() {
-                    Value::Function(aa, mut bb, cct, ee) => {
-                        todo!()
-                    }
-                    nonf => {
-                        if a.len() < 1 {
-                            Err("no enought args")
-                        } else {
-                            unsafe { call_func_with_expr(bbb, vec![*b.clone()], context) }
+            let rbbb = bbb.as_ref();
+            let mut rbbb = unsafe { &mut *bbb.get() };
+            match rbbb {
+                Value::Function(a1, hs, ct, e) => match raaa.clone() {
+                    Value::Function(a2, mut bb, cct, ee) => {
+                        let new_ctx = Rc::new(UnsafeCell::new(EvalContext::new_with(context)));
+                        unsafe {
+                            { &mut *new_ctx.as_ref().get() }
+                                .free_var
+                                .insert("@f".to_owned(), aaa);
+                            { &mut *new_ctx.as_ref().get() }
+                                .free_var
+                                .insert("@g".to_owned(), bbb);
+                            let mut expr = Expr::Call(
+                                Box::new(Expr::Closure(
+                                    a2.iter().map(|x| (x.clone(), None)).collect::<Vec<_>>(),
+                                    None,
+                                    Box::new(Expr::Closure(
+                                        a1.iter().map(|x| (x.clone(), None)).collect::<Vec<_>>(),
+                                        None,
+                                        Box::new(Expr::Call(
+                                            Box::new(Expr::Ident(vec!["@g".to_owned()])),
+                                            {
+                                                let mut v = vec![Expr::Call(
+                                                    Box::new(Expr::Ident(vec!["@f".to_owned()])),
+                                                    a2.iter()
+                                                        .map(|x| Expr::Ident(vec![x.to_owned()]))
+                                                        .collect::<Vec<_>>(),
+                                                )];
+                                                v.append(
+                                                    &mut a1[1..]
+                                                        .iter()
+                                                        .map(|x| Expr::Ident(vec![x.to_owned()]))
+                                                        .collect::<Vec<_>>(),
+                                                );
+                                                v
+                                            },
+                                        )),
+                                    )),
+                                )),
+                                vec![Expr::Literal(Literal::Null)],
+                            );
+                            eval_expr(&mut expr, new_ctx)
                         }
                     }
+                    nonf => eval_expr(&mut Expr::Call(b.clone(), vec![*a.clone()]), context),
                 },
                 _ => Err("not bindable"),
             }
@@ -341,9 +435,10 @@ pub fn eval_expr(
                         if aa.len() > 1 {
                             unimplemented!()
                         } else {
-                            unsafe { &mut *context.as_ref().get() }
-                                .free_var
-                                .insert(aa.last().unwrap().clone(), bbb.clone());
+                            unsafe { &mut *context.as_ref().get() }.free_var.insert(
+                                aa.last().unwrap().clone(),
+                                Rc::new(UnsafeCell::new(unsafe { &*bbb.as_ref().get() }.clone())),
+                            );
                         }
                         Ok(bbb)
                     } else {

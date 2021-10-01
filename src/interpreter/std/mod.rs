@@ -5,7 +5,10 @@ use std::{
     rc::Rc,
 };
 
-use crate::parser::{expr::literal::Number, ty::Type};
+use crate::parser::{
+    expr::{literal::Number, Expr},
+    ty::Type,
+};
 
 use super::{
     interpreter::{EvalContext, Value},
@@ -55,25 +58,63 @@ unsafe extern "C" fn add(args_count: usize, va: *mut *mut Value) -> UnsafeCell<V
                 },
             }
         } else {
-            UnsafeCell::new(Value::Error("TYPE MISMACHED IN RUNTIME".to_owned()))
+            UnsafeCell::new(Value::Error(format!(
+                "TYPE MISMACHED IN RUNTIME with {:?}",
+                v2
+            )))
         }
     } else {
-        UnsafeCell::new(Value::Error("TYPE MISMACHED IN RUNTIME".to_owned()))
+        UnsafeCell::new(Value::Error(format!(
+            "TYPE MISMACHED IN RUNTIME with {:?}",
+            v1
+        )))
     }
 }
 
 pub fn add_std(ty: &mut TypeCheckContext, ev: &mut EvalContext) {
     ty.free_var.insert(
+        "_add".to_owned(),
+        Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Number)),
+    );
+    ty.free_var.insert(
         "add".to_owned(),
         Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Number)),
     );
+    ty.free_var.insert(
+        "id".to_owned(),
+        Type::Function(vec![Type::Any], Box::new(Type::Any)),
+    );
     ev.free_var.insert(
-        "add".to_owned(),
+        "id".to_owned(),
+        Rc::new(UnsafeCell::new(Value::Function(
+            vec!["i".to_owned()],
+            HashMap::new(),
+            Rc::new(UnsafeCell::new(ev.clone())),
+            Expr::Ident(vec!["i".to_owned()]),
+        ))),
+    );
+    ev.free_var.insert(
+        "_add".to_owned(),
         Rc::new(UnsafeCell::new(Value::NativeFunction(
-            "add".to_owned(),
+            "_add".to_owned(),
             vec!["a".to_owned(), "b".to_owned()],
             HashMap::new(),
             add,
+        ))),
+    );
+    ev.free_var.insert(
+        "add".to_owned(),
+        Rc::new(UnsafeCell::new(Value::Function(
+            vec!["a".to_owned(), "b".to_owned()],
+            HashMap::new(),
+            Rc::new(UnsafeCell::new(ev.clone())),
+            Expr::Call(
+                Box::new(Expr::Ident(vec!["_add".to_owned()])),
+                vec![
+                    Expr::Ident(vec!["a".to_owned()]),
+                    Expr::Ident(vec!["b".to_owned()]),
+                ],
+            ),
         ))),
     );
 }

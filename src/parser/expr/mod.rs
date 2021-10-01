@@ -233,7 +233,41 @@ pub(crate) fn parse_expr(s: &str) -> IResult<&str, Expr> {
         map(parse_array, |a| Expr::Array(a)),
         // map(parse_),
     ))(s)?;
-    expr_ll(l, r)
+    expr_ll(l, r).map(|(s, e)| (s, reverse_bind(e)))
+}
+
+pub fn reverse_bind(e: Expr) -> Expr {
+    match e {
+        Expr::Quoted(e) => Expr::Quoted(Box::new(reverse_bind(*e))),
+        Expr::Block(es) => Expr::Block(es.iter().map(|e| reverse_bind(e.clone())).collect()),
+        Expr::Array(es) => Expr::Array(es.iter().map(|e| reverse_bind(e.clone())).collect()),
+        Expr::Object(o) => Expr::Object(
+            o.iter()
+                .map(|(s, e)| (s.clone(), reverse_bind(e.clone())))
+                .collect(),
+        ),
+        Expr::Closure(a, b, e) => Expr::Closure(a, b, Box::new(reverse_bind(*e))),
+        Expr::If(a, b, c) => Expr::If(a, Box::new(reverse_bind(*b)), Box::new(reverse_bind(*c))),
+        Expr::MultiIf(ifs, e) => Expr::MultiIf(
+            ifs.iter()
+                .map(|(e1, e2)| (reverse_bind(e1.clone()), reverse_bind(e2.clone())))
+                .collect(),
+            Box::new(reverse_bind(*e)),
+        ),
+        Expr::For(a, b, c) => Expr::For(a, Box::new(reverse_bind(*b)), Box::new(reverse_bind(*c))),
+        Expr::Call(a, b) => Expr::Call(
+            Box::new(reverse_bind(*a)),
+            b.iter().map(|e| reverse_bind(e.clone())).collect(),
+        ),
+        Expr::ErrorHandle(e) => Expr::ErrorHandle(Box::new(reverse_bind(*e))),
+        Expr::Bind(a, box Expr::Bind(b, c)) => {
+            reverse_bind(Expr::Bind(Box::new(Expr::Bind(a, b)), c))
+        }
+        Expr::Index(a, b) => Expr::Index(Box::new(reverse_bind(*a)), Box::new(reverse_bind(*b))),
+        Expr::Assign(a, b) => Expr::Assign(Box::new(reverse_bind(*a)), Box::new(reverse_bind(*b))),
+        Expr::SpecifyTyped(a, t) => Expr::SpecifyTyped(Box::new(reverse_bind(*a)), t),
+        e => e,
+    }
 }
 #[test]
 fn test_expr() {

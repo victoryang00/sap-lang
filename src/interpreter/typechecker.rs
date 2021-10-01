@@ -2,14 +2,14 @@ use crate::parser::expr::Expr;
 use crate::parser::TopLevel;
 use crate::parser::{expr::literal::Number, ty::Type};
 use std::borrow::{Borrow, BorrowMut};
-use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::collections::{BTreeMap, HashMap};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct TypeCheckContext {
-    pub(crate) parent: Option<Rc<RefCell<TypeCheckContext>>>,
+    pub(crate) parent: Option<Rc<UnsafeCell<TypeCheckContext>>>,
     pub(crate) free_var: HashMap<String, Type>,
     pub(crate) alias: HashMap<String, Type>,
 }
@@ -18,12 +18,21 @@ impl TypeCheckContext {
         match self.alias.get_mut(alias) {
             Some(t) => Some(t),
             None => match &self.parent {
-                Some(p) => p.as_ref().borrow_mut().get_alias(alias),
+                Some(p) => unsafe { &mut *p.get() }.get_alias(alias),
                 None => None,
             },
         }
     }
-    fn new_with(context: Rc<RefCell<TypeCheckContext>>) -> Self {
+    fn get_free_var<'a>(&'a mut self, fv: &'a String) -> Option<*mut Type> {
+        match self.free_var.get_mut(fv) {
+            Some(t) => Some(t),
+            None => match &self.parent {
+                Some(p) => unsafe { &mut *p.get() }.get_free_var(fv),
+                None => None,
+            },
+        }
+    }
+    fn new_with(context: Rc<UnsafeCell<TypeCheckContext>>) -> Self {
         Self {
             parent: Some(context),
             free_var: HashMap::new(),
@@ -175,12 +184,12 @@ unsafe fn type_elab(context: *mut TypeCheckContext, a: *mut Type, b: *mut Type) 
 
 pub fn type_check_expr(
     e: &mut Expr,
-    context: Rc<RefCell<TypeCheckContext>>,
+    context: Rc<UnsafeCell<TypeCheckContext>>,
 ) -> Result<Type, &'static str> {
     match e {
         Expr::Quoted(e) => type_check_expr(e, context),
         Expr::Block(es) => {
-            let ct = Rc::new(RefCell::new(TypeCheckContext::new_with(context.clone())));
+            let ct = Rc::new(UnsafeCell::new(TypeCheckContext::new_with(context.clone())));
             let tys = es
                 .iter_mut()
                 .map(|e| type_check_expr(e, ct.clone()))
@@ -197,26 +206,9 @@ pub fn type_check_expr(
             if i.len() > 1 {
                 unimplemented!()
             } else {
-                if !context
-                    .deref()
-                    .borrow_mut()
-                    .free_var
-                    .contains_key(i.last().unwrap())
-                {
-                    context
-                        .deref()
-                        .borrow_mut()
-                        .free_var
-                        .insert(i.last().unwrap().clone(), Type::Any);
-                    Ok(Type::Any)
-                } else {
-                    Ok(context
-                        .deref()
-                        .borrow_mut()
-                        .free_var
-                        .get(i.last().unwrap())
-                        .unwrap()
-                        .clone())
+                match unsafe { &mut *context.get() }.get_free_var(i.get(0).unwrap()) {
+                    Some(fv) => Ok(unsafe { &mut *fv }.clone()),
+                    None => Ok(Type::Any),
                 }
             }
         }
@@ -232,12 +224,11 @@ pub fn type_check_expr(
             Ok(Type::Object(b))
         }
         Expr::Closure(a, b, c) => {
-            let ct = Rc::new(RefCell::new(TypeCheckContext::new_with(context.clone())));
+            let ct = Rc::new(UnsafeCell::new(TypeCheckContext::new_with(context.clone())));
             let mut aa = vec![];
             for (k, v) in a {
                 aa.push(v.clone().unwrap_or(Type::Any));
-                ct.as_ref()
-                    .borrow_mut()
+                unsafe { &mut *ct.get() }
                     .free_var
                     .insert(k.clone(), v.clone().unwrap_or(Type::Any));
             }
@@ -245,13 +236,16 @@ pub fn type_check_expr(
             let mut bb = type_check_expr(c, ct)?;
             let r = match unsafe {
                 type_elab(
-                    context.clone().deref().borrow_mut().deref_mut(),
+                    context.as_ref().get(),
                     &mut bb,
                     b.as_mut().unwrap_or(&mut Type::Any),
                 )
             } {
                 Ok(_) => Ok(Type::Function(aa, Box::new(bb))),
-                Err(_) => Err("Type not matched"),
+                Err(_) => {
+                    println!("{:?} {:?}", bb, b);
+                    Err("Type not matched")
+                }
             };
             r
         }
@@ -259,7 +253,7 @@ pub fn type_check_expr(
             let mut aa = type_check_expr(a, context.clone())?;
             let mut bb = type_check_expr(b, context.clone())?;
             let mut cc = type_check_expr(c, context.clone())?;
-            let context = context.clone().deref().borrow_mut().deref_mut() as *mut _;
+            let context = context.as_ref().get();
             let r = match unsafe { type_elab(context, &mut aa, &mut Type::Bool) } {
                 Ok(_) => {
                     let r = match unsafe { type_elab(context, &mut bb, &mut cc) } {
@@ -287,7 +281,7 @@ pub fn type_check_expr(
                         for i in 0..bbbs.len() {
                             match unsafe {
                                 type_elab(
-                                    context.clone().deref().borrow_mut().deref_mut(),
+                                    context.as_ref().get(),
                                     a.get_mut(i).unwrap(),
                                     bbbs.get_mut(i).unwrap(),
                                 )
@@ -328,7 +322,7 @@ pub fn type_check_expr(
                         for i in 0..a.len() {
                             match unsafe {
                                 type_elab(
-                                    context.clone().deref().borrow_mut().deref_mut(),
+                                    context.as_ref().get(),
                                     a.get_mut(i).unwrap(),
                                     bbbs.get_mut(i).unwrap(),
                                 )
@@ -365,7 +359,7 @@ pub fn type_check_expr(
                             }
                             let r = match unsafe {
                                 type_elab(
-                                    context.clone().deref().borrow_mut().deref_mut(),
+                                    context.as_ref().get(),
                                     bb.as_mut(),
                                     a.get_mut(0).unwrap(),
                                 )
@@ -381,11 +375,7 @@ pub fn type_check_expr(
                             Err("no enought args")
                         } else {
                             let r = match unsafe {
-                                type_elab(
-                                    context.clone().deref().borrow_mut().deref_mut(),
-                                    a.get_mut(0).unwrap(),
-                                    &mut nonf,
-                                )
+                                type_elab(context.as_ref().get(), a.get_mut(0).unwrap(), &mut nonf)
                             } {
                                 Ok(_) => {
                                     let a = a[1..].iter().map(|x| x.clone()).collect::<Vec<_>>();
@@ -412,31 +402,21 @@ pub fn type_check_expr(
         Expr::Assign(a, b) => {
             let mut aaa = type_check_expr(a, context.clone())?;
             let mut bbb = type_check_expr(b, context.clone())?;
-            let r = match unsafe {
-                type_elab(
-                    context.clone().deref().borrow_mut().deref_mut(),
-                    &mut aaa,
-                    &mut bbb,
-                )
-            } {
-                Ok(_) => Ok(bbb),
+            let r = match unsafe { type_elab(context.as_ref().get(), &mut aaa, &mut bbb) } {
+                Ok(_) => Ok(bbb.clone()),
                 Err(_) => Err("Type not matched"),
             };
             if let box Expr::Ident(aa) = a {
                 if aa.len() > 1 {
                     unimplemented!()
                 } else {
-                    if context
-                        .deref()
-                        .borrow_mut()
-                        .free_var
-                        .contains_key(aa.last().unwrap())
-                    {
-                        context
-                            .deref()
-                            .borrow_mut()
-                            .free_var
-                            .insert(aa.last().unwrap().clone(), aaa.clone());
+                    match unsafe { &mut *context.get() }.get_free_var(aa.get(0).unwrap()) {
+                        Some(fv) => {}
+                        None => {
+                            unsafe { &mut *context.get() }
+                                .free_var
+                                .insert(aa[0].clone(), bbb);
+                        }
                     }
                 }
             }
@@ -444,13 +424,7 @@ pub fn type_check_expr(
         }
         Expr::SpecifyTyped(ex, ty) => {
             let mut tyy = type_check_expr(ex, context.clone())?;
-            match unsafe {
-                type_elab(
-                    context.clone().deref().borrow_mut().deref_mut(),
-                    &mut tyy,
-                    ty,
-                )
-            } {
+            match unsafe { type_elab(context.as_ref().get(), &mut tyy, ty) } {
                 Ok(_) => Ok(ty.clone()),
                 Err(_) => Err("Type not matched"),
             }

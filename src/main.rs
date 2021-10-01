@@ -50,15 +50,26 @@ fn main() {
                 } else {
                     match parse_top_level(line.as_str()) {
                         Ok((_, r)) => {
-                            println!("{:?}", r);
+                            println!("parsed expr: {:?}", r);
                             match r {
                                 parser::TopLevel::Expr(mut e) => {
                                     let (t, v) = runner.run_expr(e);
-                                    println!(
-                                        "type: {:?}\nvalue: {:?}",
-                                        t,
-                                        v.map(|x| unsafe { &*x.as_ref().get() })
-                                    )
+                                    match v {
+                                        Ok(t) => {
+                                            print!("{:?}", unsafe { &*t.as_ref().get() })
+                                        }
+                                        Err(e) => {
+                                            print!("\x1b[1;31meval error: {:?}\x1b[0m", e)
+                                        }
+                                    }
+                                    match t {
+                                        Ok(t) => {
+                                            println!("\x1b[1;32m\ttype: {:?}\x1b[0m", t)
+                                        }
+                                        Err(e) => {
+                                            println!("\x1b[1;31m\ttype check error: {:?}\x1b[0m", e)
+                                        }
+                                    }
                                 }
                                 _ => {}
                             }

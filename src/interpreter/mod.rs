@@ -1,6 +1,6 @@
 use ::std::{
     borrow::BorrowMut,
-    cell::{RefCell, UnsafeCell},
+    cell::UnsafeCell,
     collections::HashMap,
     fmt::Debug,
     ops::{Deref, DerefMut},
@@ -20,16 +20,15 @@ pub mod std;
 pub mod typechecker;
 
 pub struct Runner {
-    type_check_context: Rc<RefCell<TypeCheckContext>>,
+    type_check_context: Rc<UnsafeCell<TypeCheckContext>>,
     eval_context: Rc<UnsafeCell<EvalContext>>,
 }
 impl Debug for Runner {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         f.debug_struct("Runner")
-            .field(
-                "type_check_context",
-                self.type_check_context.as_ref().borrow().deref(),
-            )
+            .field("type_check_context", unsafe {
+                &*self.type_check_context.as_ref().get()
+            })
             .field("eval_context", unsafe {
                 &*self.eval_context.as_ref().get()
             })
@@ -39,7 +38,7 @@ impl Debug for Runner {
 
 impl Runner {
     pub fn new() -> Self {
-        let type_check_context = Rc::new(RefCell::new(TypeCheckContext {
+        let type_check_context = Rc::new(UnsafeCell::new(TypeCheckContext {
             parent: None,
             free_var: HashMap::new(),
             alias: HashMap::new(),
@@ -56,7 +55,7 @@ impl Runner {
     pub fn new_with_std() -> Self {
         let mut s = Self::new();
         add_std(
-            s.type_check_context.as_ref().borrow_mut().deref_mut(),
+            unsafe { &mut *s.type_check_context.as_ref().get() },
             unsafe { &mut *s.eval_context.as_ref().get() },
         );
         s
