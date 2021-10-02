@@ -8,6 +8,7 @@ use nom::{
     sequence::{delimited, pair, tuple},
     IResult,
 };
+use nom_locate::LocatedSpan;
 
 use crate::utils::{list0, list1, valid_name, ws, ws_single_line};
 
@@ -38,7 +39,7 @@ pub enum Expr {
     SpecifyTyped(Box<Expr>, Type),
 }
 
-pub fn key_word(s: &str) -> IResult<&str, &str> {
+pub fn key_word(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, LocatedSpan<&str>> {
     alt((
         //
         tag("string"),
@@ -62,25 +63,30 @@ pub fn key_word(s: &str) -> IResult<&str, &str> {
     ))(s)
 }
 
-pub fn ident(s: &str) -> IResult<&str, String> {
+pub fn ident(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, String> {
     let (o, name) = valid_name(s)?;
     let k = key_word(name);
     match k {
-        Ok(("", _)) => Err(nom::Err::Error(nom::error::Error::new(
-            name,
-            nom::error::ErrorKind::Not,
-        ))),
-        Ok((_, _)) => Ok((o, name.to_owned())),
-        Err(_) => Ok((o, name.to_owned())),
+        Ok((a, _)) => {
+            if a.fragment() == &"" {
+                Err(nom::Err::Error(nom::error::Error::new(
+                    name,
+                    nom::error::ErrorKind::Not,
+                )))
+            } else {
+                Ok((o, name.fragment().to_string()))
+            }
+        }
+        Err(_) => Ok((o, name.fragment().to_string())),
     }
 }
 
-fn parse_block(s: &str) -> IResult<&str, Vec<Expr>> {
+fn parse_block(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Vec<Expr>> {
     // list 1 expand
     list1("{", "}", ";", parse_expr)(s)
 }
 
-pub(crate) fn parse_closure(s: &str) -> IResult<&str, Expr> {
+pub(crate) fn parse_closure(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Expr> {
     map(
         tuple((
             list0("(", ")", ",", |s| {
@@ -97,15 +103,11 @@ pub(crate) fn parse_closure(s: &str) -> IResult<&str, Expr> {
         |(a, t, e)| Expr::Closure(a, t, Box::new(e)),
     )(s)
 }
-#[test]
-fn test_closure() {
-    println!("{:?}", parse_closure("(a:number) -> number {1}"))
-}
 
-fn parse_array(s: &str) -> IResult<&str, Vec<Expr>> {
+fn parse_array(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Vec<Expr>> {
     list0("[", "]", ",", parse_expr)(s)
 }
-fn parse_object(s: &str) -> IResult<&str, Vec<(String, Expr)>> {
+fn parse_object(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Vec<(String, Expr)>> {
     list0("{", "}", ",", |s| {
         alt((
             map(
@@ -122,7 +124,7 @@ fn parse_object(s: &str) -> IResult<&str, Vec<(String, Expr)>> {
         ))(s)
     })(s)
 }
-fn parse_if(s: &str) -> IResult<&str, (Expr, Expr, Expr)> {
+fn parse_if(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, (Expr, Expr, Expr)> {
     map(
         tuple((
             tag("if"),
@@ -137,7 +139,7 @@ fn parse_if(s: &str) -> IResult<&str, (Expr, Expr, Expr)> {
     )(s)
 }
 
-fn parse_multi_if_body(s: &str) -> IResult<&str, Vec<(Expr, Expr)>> {
+fn parse_multi_if_body(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Vec<(Expr, Expr)>> {
     map(
         tuple((
             tag("|"),
@@ -153,7 +155,7 @@ fn parse_multi_if_body(s: &str) -> IResult<&str, Vec<(Expr, Expr)>> {
     )(s)
 }
 
-fn parse_for(s: &str) -> IResult<&str, (String, Box<Expr>, Box<Expr>)> {
+fn parse_for(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, (String, Box<Expr>, Box<Expr>)> {
     map(
         tuple((
             tag("for"),
@@ -170,12 +172,7 @@ fn parse_for(s: &str) -> IResult<&str, (String, Box<Expr>, Box<Expr>)> {
     )(s)
 }
 
-#[test]
-fn test_for() {
-    println!("{:?}", parse_for("for i in j {i}"))
-}
-
-fn parse_multi_if(s: &str) -> IResult<&str, (Vec<(Expr, Expr)>, Expr)> {
+fn parse_multi_if(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, (Vec<(Expr, Expr)>, Expr)> {
     map(
         tuple((
             tag("if"),
@@ -188,13 +185,13 @@ fn parse_multi_if(s: &str) -> IResult<&str, (Vec<(Expr, Expr)>, Expr)> {
     )(s)
 }
 
-fn q(s: &str) -> IResult<&str, &str> {
+fn q(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, LocatedSpan<&str>> {
     tag("?")(s)
 }
-fn type_specifier(s: &str) -> IResult<&str, Type> {
+fn type_specifier(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Type> {
     map(tuple((tag(":"), opt(ws), parse_type)), |(_, _, ty)| ty)(s)
 }
-fn expr_ll(l: Expr, r: &str) -> IResult<&str, Expr> {
+fn expr_ll(l: Expr, r: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Expr> {
     let (r, _) = opt(ws)(r)?;
     if let Ok((r, _)) = q(r) {
         expr_ll(Expr::ErrorHandle(Box::new(l)), r)
@@ -214,7 +211,7 @@ fn expr_ll(l: Expr, r: &str) -> IResult<&str, Expr> {
         Ok((r, l))
     }
 }
-pub(crate) fn parse_expr(s: &str) -> IResult<&str, Expr> {
+pub(crate) fn parse_expr(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Expr> {
     let (r, l) = alt((
         parse_closure,
         map(
@@ -302,7 +299,7 @@ fn test_expr() {
         "(a:number)->number {1; a[1]; if 1 {2} else {3}}",
     ];
     for e in exprs {
-        let r = parse_expr(e);
+        let r = parse_expr(LocatedSpan::from(e));
         // assert!(r.is_ok());
         // let (r0, r1) = r.unwrap();
         // assert_eq!(r0, "");

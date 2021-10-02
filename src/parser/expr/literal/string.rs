@@ -8,6 +8,7 @@ use nom::combinator::map;
 use nom::error::Error;
 use nom::sequence::{delimited, pair, tuple};
 use nom::{IResult, Parser};
+use nom_locate::LocatedSpan;
 
 use super::escape_code;
 
@@ -19,7 +20,10 @@ enum ControlChar {
     Codepoint,
 }
 
-pub fn rewrite<'a>(o: &'a str, st: &'a str) -> IResult<&'a str, String> {
+pub fn rewrite<'a>(
+    o: LocatedSpan<&'a str>,
+    st: LocatedSpan<&'a str>,
+) -> IResult<LocatedSpan<&'a str>, String> {
     let mut res = String::new();
     let chars: Vec<char> = st.chars().collect();
     let mut i = 0;
@@ -97,10 +101,15 @@ pub fn rewrite<'a>(o: &'a str, st: &'a str) -> IResult<&'a str, String> {
 #[test]
 fn test_rewrite() {
     let toberewrite = r#"ass\{\}\n\v\t\r\n\rmother\n\'\"\101\x41"#;
-    println!("{}", rewrite("", toberewrite).unwrap().1);
+    println!(
+        "{}",
+        rewrite(LocatedSpan::from(""), LocatedSpan::from(toberewrite))
+            .unwrap()
+            .1
+    );
 }
 
-pub fn quoted_string(s: &str) -> IResult<&str, String> {
+pub fn quoted_string(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, String> {
     let (o, i) = delimited(
         char('"'),
         escaped(is_not("\"\\"), '\\', escape_code),
@@ -109,12 +118,12 @@ pub fn quoted_string(s: &str) -> IResult<&str, String> {
     rewrite(o, i)
 }
 
-pub fn raw_string(s: &str) -> IResult<&str, String> {
+pub fn raw_string(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, String> {
     let (i, o) = delimited(is_a("r#"), is_not("#"), is_a("#r"))(s)?;
-    Ok((i, o.to_owned()))
+    Ok((i, o.fragment().to_string()))
 }
 
-pub fn string(s: &str) -> IResult<&str, String> {
+pub fn string(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, String> {
     let (o, s) = alt((quoted_string, raw_string))(s)?;
     Ok((o, s.to_owned()))
 }

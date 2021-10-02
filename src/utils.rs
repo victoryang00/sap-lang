@@ -6,7 +6,7 @@ use nom::{
     sequence::{delimited, pair, tuple},
     IResult,
 };
-
+use nom_locate::LocatedSpan;
 pub fn is_ws(s: char) -> bool {
     match s {
         '\u{0009}' => true,
@@ -24,7 +24,7 @@ pub fn is_ws(s: char) -> bool {
     }
 }
 
-pub fn ws(s: &str) -> IResult<&str, &str> {
+pub fn ws(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, LocatedSpan<&str>> {
     // '\u{0009}' (horizontal tab, '\t')
     // '\u{000A}' (line feed, '\n')
     // '\u{000B}' (vertical tab)
@@ -39,7 +39,7 @@ pub fn ws(s: &str) -> IResult<&str, &str> {
     take_till1(|c| !is_ws(c))(s)
 }
 
-pub fn ws_single_line(s: &str) -> IResult<&str, &str> {
+pub fn ws_single_line(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, LocatedSpan<&str>> {
     // '\u{0009}' (horizontal tab, '\t')
     // '\u{000A}' (line feed, '\n')
     // '\u{000B}' (vertical tab)
@@ -58,8 +58,8 @@ pub fn list0<'a, O>(
     s: &'static str,
     e: &'static str,
     sep: &'static str,
-    inner: impl Fn(&'a str) -> IResult<&'a str, O>,
-) -> impl FnMut(&'a str) -> IResult<&'a str, Vec<O>> {
+    inner: impl Fn(LocatedSpan<&'a str>) -> IResult<LocatedSpan<&'a str>, O>,
+) -> impl FnMut(LocatedSpan<&'a str>) -> IResult<LocatedSpan<&'a str>, Vec<O>> {
     delimited(
         pair(tag(s), opt(ws)),
         separated_list0(pair(tag(sep), opt(ws)), inner),
@@ -71,8 +71,8 @@ pub fn list1<'a, O>(
     s: &'static str,
     e: &'static str,
     sep: &'static str,
-    inner: impl Fn(&'a str) -> IResult<&'a str, O>,
-) -> impl FnMut(&'a str) -> IResult<&'a str, Vec<O>> {
+    inner: impl Fn(LocatedSpan<&'a str>) -> IResult<LocatedSpan<&'a str>, O>,
+) -> impl FnMut(LocatedSpan<&'a str>) -> IResult<LocatedSpan<&'a str>, Vec<O>> {
     delimited(
         pair(tag(s), opt(ws)),
         separated_list1(pair(tag(sep), opt(ws)), inner),
@@ -1495,6 +1495,6 @@ fn valid_tail(c: char) -> bool {
     !_valid_tail(c)
 }
 
-pub fn valid_name(s: &str) -> IResult<&str, &str> {
+pub fn valid_name(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, LocatedSpan<&str>> {
     recognize(pair(take_till1(valid_start), take_till(valid_tail)))(s)
 }

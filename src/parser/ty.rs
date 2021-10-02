@@ -7,6 +7,7 @@ use nom::{
     sequence::tuple,
     IResult,
 };
+use nom_locate::LocatedSpan;
 
 use crate::{
     parser::expr::ident,
@@ -27,7 +28,7 @@ pub enum Type {
     Alias(String),
 }
 
-pub fn parse_type(s: &str) -> IResult<&str, Type> {
+pub fn parse_type(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Type> {
     alt((
         map(ident, |i| Type::Alias(i)),
         map(tag("any"), |_| Type::Any),

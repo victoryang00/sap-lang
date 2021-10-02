@@ -10,6 +10,7 @@ use nom::{
     sequence::tuple,
     IResult,
 };
+use nom_locate::LocatedSpan;
 use std::collections::BTreeMap;
 
 use crate::{
@@ -35,7 +36,7 @@ pub enum TopLevel {
     Expr(Expr),
 }
 
-fn parse_type_def(s: &str) -> IResult<&str, TopLevel> {
+fn parse_type_def(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, TopLevel> {
     map(
         tuple((
             tag("type"),
@@ -49,7 +50,7 @@ fn parse_type_def(s: &str) -> IResult<&str, TopLevel> {
         |(_, _, i, _, _, _, c)| TopLevel::TypeDef(i, c),
     )(s)
 }
-fn parse_enum_body(s: &str) -> IResult<&str, Vec<(String, Expr)>> {
+fn parse_enum_body(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Vec<(String, Expr)>> {
     map(
         tuple((
             tag("|"),
@@ -66,14 +67,14 @@ fn parse_enum_body(s: &str) -> IResult<&str, Vec<(String, Expr)>> {
     )(s)
 }
 
-fn parse_enum_def(s: &str) -> IResult<&str, TopLevel> {
+fn parse_enum_def(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, TopLevel> {
     map(
         tuple((tag("type"), ws, ident, opt(ws), parse_enum_body)),
         |(_, _, i, _, b)| TopLevel::EnumDef(i, b),
     )(s)
 }
 
-fn parse_import(s: &str) -> IResult<&str, TopLevel> {
+fn parse_import(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, TopLevel> {
     map(
         tuple((
             tag("import"),
@@ -87,7 +88,7 @@ fn parse_import(s: &str) -> IResult<&str, TopLevel> {
         |(_, _, v, _, _, _, s)| TopLevel::Import(v, s),
     )(s)
 }
-pub fn parse_top_level(s: &str) -> IResult<&str, TopLevel> {
+pub fn parse_top_level(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, TopLevel> {
     alt((
         parse_type_def,
         parse_enum_def,

@@ -5,14 +5,15 @@ use nom::{
     sequence::delimited,
     IResult,
 };
+use nom_locate::LocatedSpan;
 // TODO: limit one char
-fn char(s: &str) -> IResult<&str, char> {
+fn char(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, char> {
     map(
         delimited(
             tag("\'"),
             escaped(is_not("\"\\"), '\\', escape_code),
             tag("\'"),
         ),
-        |s| s.chars().into_iter().next().unwrap(),
+        |s: LocatedSpan<&str>| s.chars().into_iter().next().unwrap(),
     )(s)
 }

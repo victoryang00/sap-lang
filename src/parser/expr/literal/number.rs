@@ -6,11 +6,12 @@ use nom::{
     sequence::tuple,
     IResult,
 };
+use nom_locate::LocatedSpan;
 
 use super::Number;
 
-fn hex(s: &str) -> IResult<&str, Number> {
-    fn str2i(s: &str) -> i128 {
+fn hex(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Number> {
+    fn str2i(s: LocatedSpan<&str>) -> i128 {
         i128::from_str_radix(&s[2..], 16).unwrap()
     }
     map(recognize(tuple((tag_no_case("0x"), hex_digit1))), |s| {
@@ -18,8 +19,8 @@ fn hex(s: &str) -> IResult<&str, Number> {
     })(s)
 }
 
-fn bin(s: &str) -> IResult<&str, Number> {
-    fn str2i(s: &str) -> i128 {
+fn bin(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Number> {
+    fn str2i(s: LocatedSpan<&str>) -> i128 {
         i128::from_str_radix(&s[2..], 2).unwrap()
     }
     map(
@@ -31,19 +32,19 @@ fn bin(s: &str) -> IResult<&str, Number> {
     )(s)
 }
 
-fn int(s: &str) -> IResult<&str, Number> {
+fn int(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Number> {
     let (o, (s, v)) = tuple((
         opt(alt((tag("-"), tag("+")))),
         alt((
             hex,
             bin,
-            map(digit1, |s| {
-                Number::Integer(i128::from_str_radix(s, 10).unwrap())
+            map(digit1, |s: LocatedSpan<&str>| {
+                Number::Integer(i128::from_str_radix(s.fragment(), 10).unwrap())
             }),
         )),
     ))(s)?;
     if let Some(c) = s {
-        if c == "-" {
+        if c.fragment() == &"-" {
             let v = Number::Integer(-v.int());
             Ok((o, v))
         } else {
@@ -53,7 +54,7 @@ fn int(s: &str) -> IResult<&str, Number> {
         Ok((o, v))
     }
 }
-fn float(s: &str) -> IResult<&str, Number> {
+fn float(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Number> {
     map(
         alt((
             map(
@@ -62,7 +63,7 @@ fn float(s: &str) -> IResult<&str, Number> {
                         if let Some(n) = s {
                             n.int().to_string()
                         } else {
-                            "0".to_owned()
+                            "0".to_string()
                         }
                     }),
                     map(
@@ -71,23 +72,25 @@ fn float(s: &str) -> IResult<&str, Number> {
                             map(
                                 alt((
                                     bin,
-                                    map(digit1, |s| {
-                                        Number::Integer(i128::from_str_radix(s, 10).unwrap())
+                                    map(digit1, |s: LocatedSpan<&str>| {
+                                        Number::Integer(
+                                            i128::from_str_radix(s.fragment(), 10).unwrap(),
+                                        )
                                     }),
                                 )),
                                 |n| n.int().to_string(),
                             ),
                         )),
-                        |(a, b)| a.to_owned() + &b,
+                        |(a, b): (LocatedSpan<&str>, String)| a.fragment().to_string() + b.as_str(),
                     ),
                     map(opt(tuple((tag_no_case("e"), int))), |o| {
                         let (e, n) = o?;
                         Some((e, n.int().to_string()))
                     }),
                 )),
-                |(a, b, c)| {
+                |(a, b, c): (String, String, Option<(LocatedSpan<&str>, String)>)| {
                     if let Some((c1, c2)) = c {
-                        a + &b + c1 + &c2
+                        a + &b + c1.fragment() + &c2
                     } else {
                         a + &b
                     }
@@ -102,18 +105,20 @@ fn float(s: &str) -> IResult<&str, Number> {
                             map(
                                 alt((
                                     bin,
-                                    map(digit1, |s| {
-                                        Number::Integer(i128::from_str_radix(s, 10).unwrap())
+                                    map(digit1, |s: LocatedSpan<&str>| {
+                                        Number::Integer(
+                                            i128::from_str_radix(s.fragment(), 10).unwrap(),
+                                        )
                                     }),
                                 )),
                                 |n| n.int().to_string(),
                             ),
                         ))),
-                        |o| {
+                        |o: Option<(LocatedSpan<&str>, String)>| {
                             if let Some((a, b)) = o {
-                                a.to_owned() + &b
+                                a.fragment().to_string() + b.as_str()
                             } else {
-                                "".to_owned()
+                                "".to_string()
                             }
                         },
                     ),
@@ -122,7 +127,9 @@ fn float(s: &str) -> IResult<&str, Number> {
                         (e, n.int().to_string())
                     }),
                 )),
-                |(a, b, (c1, c2))| a + &b + c1 + &c2,
+                |(a, b, (c1, c2)): (String, String, (LocatedSpan<&str>, String))| {
+                    a + &b + c1.fragment() + &c2
+                },
             ),
         )),
         |s| {
@@ -135,7 +142,7 @@ fn float(s: &str) -> IResult<&str, Number> {
     )(s)
 }
 
-pub fn number(s: &str) -> IResult<&str, Number> {
+pub fn number(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Number> {
     alt((float, int))(s)
 }
 
@@ -160,8 +167,11 @@ fn test_parse_number() {
         "-1E10",
         ".0b110110E0xFF",
     ];
-    for res in numbers.iter().map(|s| number(*s).unwrap()) {
+    for res in numbers
+        .iter()
+        .map(|s| number(LocatedSpan::from(*s)).unwrap())
+    {
         println!("{:?}", res);
-        assert_eq!(res.0, "");
+        assert_eq!(res.0.fragment(), &"");
     }
 }
