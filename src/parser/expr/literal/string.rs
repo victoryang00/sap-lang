@@ -119,7 +119,7 @@ pub fn quoted_string(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, String>
 }
 
 pub fn raw_string(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, String> {
-    let (i, o) = delimited(is_a("r#"), is_not("#"), is_a("#r"))(s)?;
+    let (i, o) = delimited(tag("r\""), is_not("##ENDRAW"), tag("\""))(s)?;
     Ok((i, o.fragment().to_string()))
 }
 

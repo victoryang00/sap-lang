@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::parser::{
-    expr::{literal::Number, Expr},
+    expr::{literal::Number, CommentedExpr, Expr},
     ty::Type,
 };
 
@@ -90,7 +90,7 @@ pub fn add_std(ty: &mut TypeCheckContext, ev: &mut EvalContext) {
             vec!["i".to_owned()],
             HashMap::new(),
             Rc::new(UnsafeCell::new(ev.clone())),
-            Expr::Ident(vec!["i".to_owned()]),
+            CommentedExpr::from_expr(Expr::Ident(vec!["i".to_owned()])),
         ))),
     );
     ev.free_var.insert(
@@ -108,13 +108,15 @@ pub fn add_std(ty: &mut TypeCheckContext, ev: &mut EvalContext) {
             vec!["a".to_owned(), "b".to_owned()],
             HashMap::new(),
             Rc::new(UnsafeCell::new(ev.clone())),
-            Expr::Call(
-                Box::new(Expr::Ident(vec!["_add".to_owned()])),
+            CommentedExpr::from_expr(Expr::Call(
+                Box::new(CommentedExpr::from_expr(Expr::Ident(vec![
+                    "_add".to_owned()
+                ]))),
                 vec![
-                    Expr::Ident(vec!["a".to_owned()]),
-                    Expr::Ident(vec!["b".to_owned()]),
+                    CommentedExpr::from_expr(Expr::Ident(vec!["a".to_owned()])),
+                    CommentedExpr::from_expr(Expr::Ident(vec!["b".to_owned()])),
                 ],
-            ),
+            )),
         ))),
     );
 }

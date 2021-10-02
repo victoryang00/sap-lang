@@ -7,7 +7,11 @@ use ::std::{
     rc::Rc,
 };
 
-use crate::parser::{expr::Expr, ty::Type};
+mod type_checker;
+use crate::parser::{
+    expr::{CommentedExpr, Expr},
+    ty::Type,
+};
 
 use self::{
     interpreter::{eval_expr, EvalContext, Value},
@@ -62,7 +66,7 @@ impl Runner {
     }
     pub fn run_expr(
         &mut self,
-        mut e: Expr,
+        mut e: CommentedExpr,
     ) -> (
         Result<Type, &'static str>,
         Result<Rc<UnsafeCell<Value>>, &'static str>,

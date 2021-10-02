@@ -8,7 +8,7 @@ use std::{
 
 use crate::parser::expr::{
     literal::{Literal, Number},
-    reverse_bind, Expr,
+    reverse_bind, CommentedExpr, Expr,
 };
 
 #[derive(Debug, Clone)]
@@ -48,7 +48,7 @@ pub enum Value {
         Vec<String>,
         HashMap<String, Rc<UnsafeCell<Value>>>,
         Rc<UnsafeCell<EvalContext>>,
-        Expr,
+        CommentedExpr,
     ),
     NativeFunction(
         String,
@@ -111,7 +111,7 @@ impl std::fmt::Debug for Value {
 
 pub unsafe fn call_func_with_expr(
     f: Value,
-    mut args: Vec<Expr>,
+    mut args: Vec<CommentedExpr>,
     context: Rc<UnsafeCell<EvalContext>>,
 ) -> Result<Rc<UnsafeCell<Value>>, &'static str> {
     let mut v = vec![];
@@ -142,26 +142,28 @@ pub unsafe fn call_func_with_expr(
             let mut ctx = EvalContext::new_with(context);
             ctx.free_var
                 .insert("@func".to_owned(), Rc::new(UnsafeCell::new(f)));
-            let mut expr = Expr::Closure(
+            let mut expr = CommentedExpr::from_expr(Expr::Closure(
                 fargs[v.len()..]
                     .iter()
                     .map(|x| (x.clone(), None))
                     .collect::<Vec<_>>(),
                 None,
-                Box::new(Expr::Call(
-                    Box::new(Expr::Ident(vec!["@func".to_owned()])),
+                Box::new(CommentedExpr::from_expr(Expr::Call(
+                    Box::new(CommentedExpr::from_expr(Expr::Ident(vec![
+                        "@func".to_owned()
+                    ]))),
                     {
                         let mut vv = args;
                         vv.append(
                             &mut fargs[v.len()..]
                                 .iter()
-                                .map(|x| Expr::Ident(vec![x.clone()]))
+                                .map(|x| CommentedExpr::from_expr(Expr::Ident(vec![x.clone()])))
                                 .collect::<Vec<_>>(),
                         );
                         vv
                     },
-                )),
-            );
+                ))),
+            ));
             eval_expr(&mut expr, Rc::new(UnsafeCell::new(ctx)))
         } else {
             let hh = h.clone();
@@ -201,26 +203,28 @@ pub unsafe fn call_func_with_expr(
             let mut ctx = EvalContext::new_with(context);
             ctx.free_var
                 .insert("@func".to_owned(), Rc::new(UnsafeCell::new(f)));
-            let mut expr = Expr::Closure(
+            let mut expr = CommentedExpr::from_expr(Expr::Closure(
                 fargs[v.len()..]
                     .iter()
                     .map(|x| (x.clone(), None))
                     .collect::<Vec<_>>(),
                 None,
-                Box::new(Expr::Call(
-                    Box::new(Expr::Ident(vec!["@func".to_owned()])),
+                Box::new(CommentedExpr::from_expr(Expr::Call(
+                    Box::new(CommentedExpr::from_expr(Expr::Ident(vec![
+                        "@func".to_owned()
+                    ]))),
                     {
                         let mut vv = args;
                         vv.append(
                             &mut fargs[v.len()..]
                                 .iter()
-                                .map(|x| Expr::Ident(vec![x.clone()]))
+                                .map(|x| CommentedExpr::from_expr(Expr::Ident(vec![x.clone()])))
                                 .collect::<Vec<_>>(),
                         );
                         vv
                     },
-                )),
-            );
+                ))),
+            ));
             eval_expr(&mut expr, Rc::new(UnsafeCell::new(ctx)))
         } else {
             let mut hh = h.clone();
@@ -241,12 +245,13 @@ pub unsafe fn call_func_with_expr(
 }
 
 pub fn eval_expr(
-    e: &mut Expr,
+    e: &mut CommentedExpr,
     context: Rc<UnsafeCell<EvalContext>>,
 ) -> Result<Rc<UnsafeCell<Value>>, &'static str> {
     // println!("trace: expr: {:?} context: {:?}", e, unsafe {
     //     &*context.as_ref().get()
     // });
+    let CommentedExpr { comment, expr: e } = e;
     match e {
         Expr::Quoted(e) => eval_expr(e, context),
         Expr::Block(es) => {
@@ -293,7 +298,7 @@ pub fn eval_expr(
         }
         Expr::Object(es) => {
             let mut b = BTreeMap::new();
-            for (k, v) in es {
+            for ((_, k), v) in es {
                 b.insert(k.clone(), eval_expr(v, context.clone()).unwrap());
             }
             Ok(Rc::new(UnsafeCell::new(Value::Object(b))))
@@ -356,39 +361,55 @@ pub fn eval_expr(
                             { &mut *new_ctx.as_ref().get() }
                                 .free_var
                                 .insert("@g".to_owned(), bbb);
-                            let mut expr = Expr::Call(
-                                Box::new(Expr::Closure(
+                            let mut expr = CommentedExpr::from_expr(Expr::Call(
+                                Box::new(CommentedExpr::from_expr(Expr::Closure(
                                     a2.iter().map(|x| (x.clone(), None)).collect::<Vec<_>>(),
                                     None,
-                                    Box::new(Expr::Closure(
+                                    Box::new(CommentedExpr::from_expr(Expr::Closure(
                                         a1.iter().map(|x| (x.clone(), None)).collect::<Vec<_>>(),
                                         None,
-                                        Box::new(Expr::Call(
-                                            Box::new(Expr::Ident(vec!["@g".to_owned()])),
+                                        Box::new(CommentedExpr::from_expr(Expr::Call(
+                                            Box::new(CommentedExpr::from_expr(Expr::Ident(vec![
+                                                "@g".to_owned(),
+                                            ]))),
                                             {
-                                                let mut v = vec![Expr::Call(
-                                                    Box::new(Expr::Ident(vec!["@f".to_owned()])),
-                                                    a2.iter()
-                                                        .map(|x| Expr::Ident(vec![x.to_owned()]))
-                                                        .collect::<Vec<_>>(),
-                                                )];
+                                                let mut v =
+                                                    vec![CommentedExpr::from_expr(Expr::Call(
+                                                        Box::new(CommentedExpr::from_expr(
+                                                            Expr::Ident(vec!["@f".to_owned()]),
+                                                        )),
+                                                        a2.iter()
+                                                            .map(|x| {
+                                                                CommentedExpr::from_expr(
+                                                                    Expr::Ident(vec![x.to_owned()]),
+                                                                )
+                                                            })
+                                                            .collect::<Vec<_>>(),
+                                                    ))];
                                                 v.append(
                                                     &mut a1[1..]
                                                         .iter()
-                                                        .map(|x| Expr::Ident(vec![x.to_owned()]))
+                                                        .map(|x| {
+                                                            CommentedExpr::from_expr(Expr::Ident(
+                                                                vec![x.to_owned()],
+                                                            ))
+                                                        })
                                                         .collect::<Vec<_>>(),
                                                 );
                                                 v
                                             },
-                                        )),
-                                    )),
-                                )),
-                                vec![Expr::Literal(Literal::Null)],
-                            );
+                                        ))),
+                                    ))),
+                                ))),
+                                vec![CommentedExpr::from_expr(Expr::Literal(Literal::Null))],
+                            ));
                             eval_expr(&mut expr, new_ctx)
                         }
                     }
-                    nonf => eval_expr(&mut Expr::Call(b.clone(), vec![*a.clone()]), context),
+                    nonf => eval_expr(
+                        &mut CommentedExpr::from_expr(Expr::Call(b.clone(), vec![*a.clone()])),
+                        context,
+                    ),
                 },
                 _ => Err("not bindable"),
             }
@@ -431,7 +452,11 @@ pub fn eval_expr(
                 }
                 Err(_) => {
                     let mut bbb = eval_expr(b, context.clone())?;
-                    if let box Expr::Ident(aa) = a {
+                    if let box CommentedExpr {
+                        comment,
+                        expr: Expr::Ident(aa),
+                    } = a
+                    {
                         if aa.len() > 1 {
                             unimplemented!()
                         } else {

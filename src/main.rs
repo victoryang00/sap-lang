@@ -54,13 +54,16 @@ fn main() {
                             if l.fragment() != &"" {
                                 println!("\x1b[1;31munable to parse substring:\x1b[0;0m {:?}", l);
                             }
-                            println!("parsed expr: {:?}", r);
+                            println!("parsed: {:?}", r);
                             match r {
-                                parser::TopLevel::Expr(mut e) => {
+                                parser::TopLevel::Comment(c) => println!("comment: {:?}", c),
+                                parser::TopLevel::Expr(e) => {
                                     let (t, v) = runner.run_expr(e);
                                     match v {
                                         Ok(t) => {
-                                            print!("{:?}", unsafe { &*t.as_ref().get() })
+                                            print!("eval result: {:?}", unsafe {
+                                                &*t.as_ref().get()
+                                            })
                                         }
                                         Err(e) => {
                                             print!("\x1b[1;31meval error: {:?}\x1b[0m", e)

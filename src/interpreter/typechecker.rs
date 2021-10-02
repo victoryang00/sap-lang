@@ -1,4 +1,4 @@
-use crate::parser::expr::Expr;
+use crate::parser::expr::{CommentedExpr, Expr};
 use crate::parser::TopLevel;
 use crate::parser::{expr::literal::Number, ty::Type};
 use std::borrow::{Borrow, BorrowMut};
@@ -183,9 +183,10 @@ unsafe fn type_elab(context: *mut TypeCheckContext, a: *mut Type, b: *mut Type) 
 }
 
 pub fn type_check_expr(
-    e: &mut Expr,
+    e: &mut CommentedExpr,
     context: Rc<UnsafeCell<TypeCheckContext>>,
 ) -> Result<Type, &'static str> {
+    let CommentedExpr { comment, expr: e } = e;
     match e {
         Expr::Quoted(e) => type_check_expr(e, context),
         Expr::Block(es) => {
@@ -215,7 +216,7 @@ pub fn type_check_expr(
         Expr::Array(_) => Ok(Type::Array),
         Expr::Object(es) => {
             let mut b = BTreeMap::new();
-            for (k, v) in es {
+            for ((_, k), v) in es {
                 b.insert(
                     k.clone(),
                     type_check_expr(v, context.clone()).unwrap_or(Type::Any),
@@ -301,19 +302,19 @@ pub fn type_check_expr(
                         Ok(Type::Function(args, b))
                     } else if a.len() < bbbs.len() {
                         if let box f @ Type::Function(_, _) = b {
-                            let mut expr = Expr::Call(
-                                Box::new(Expr::Call(
+                            let mut expr = CommentedExpr::from_expr(Expr::Call(
+                                Box::new(CommentedExpr::from_expr(Expr::Call(
                                     func.clone(),
                                     args[0..a.len()]
                                         .iter()
                                         .map(|x| x.clone())
                                         .collect::<Vec<_>>(),
-                                )),
+                                ))),
                                 args[a.len()..]
                                     .iter()
                                     .map(|x| x.clone())
                                     .collect::<Vec<_>>(),
-                            );
+                            ));
                             type_check_expr(&mut expr, context)
                         } else {
                             Err("too much argument")
@@ -406,7 +407,11 @@ pub fn type_check_expr(
                 Ok(_) => Ok(bbb.clone()),
                 Err(_) => Err("Type not matched"),
             };
-            if let box Expr::Ident(aa) = a {
+            if let box CommentedExpr {
+                comment,
+                expr: Expr::Ident(aa),
+            } = a
+            {
                 if aa.len() > 1 {
                     unimplemented!()
                 } else {
