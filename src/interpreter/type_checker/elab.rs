@@ -1,8 +1,6 @@
-use std::{
-    cell::UnsafeCell,
-    collections::{BTreeMap, HashMap},
-    rc::Rc,
-};
+use core::cell::UnsafeCell;
+
+use alloc::{boxed::Box, collections::BTreeMap, rc::Rc, vec};
 
 use crate::parser::{
     expr::{CommentedExpr, Expr},
@@ -47,7 +45,7 @@ pub fn type_elab(
         // function
         (Type::Function(args1, ret1), Type::Function(args2, ret2)) => {
             match args1.len().cmp(&args2.len()) {
-                std::cmp::Ordering::Equal => {
+                core::cmp::Ordering::Equal => {
                     let mut args = vec![];
                     for i in 0..args1.len() {
                         args.push(type_elab(

@@ -1,3 +1,4 @@
+use alloc::string::String;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_till1},

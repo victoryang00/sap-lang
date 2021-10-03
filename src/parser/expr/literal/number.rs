@@ -1,3 +1,4 @@
+use alloc::string::{String, ToString};
 use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case, take_till},
@@ -133,7 +134,7 @@ fn float(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Number> {
             ),
         )),
         |s| {
-            println!("s is: {}", s);
+            // println!("s is: {}", s);
             Number::Floating(
                 s.parse::<f64>()
                     .expect("ERROR could not covert value to valid float"),
@@ -171,7 +172,7 @@ fn test_parse_number() {
         .iter()
         .map(|s| number(LocatedSpan::from(*s)).unwrap())
     {
-        println!("{:?}", res);
+        // println!("{:?}", res);
         assert_eq!(res.0.fragment(), &"");
     }
 }

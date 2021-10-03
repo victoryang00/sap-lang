@@ -2,6 +2,12 @@ use crate::parser::expr::literal::string::string;
 use crate::parser::expr::parse_closure;
 use crate::parser::expr::parse_expr;
 use crate::utils::list1;
+use alloc::boxed::Box;
+use alloc::collections::BTreeMap;
+use alloc::string::String;
+use alloc::string::ToString;
+use alloc::vec::Vec;
+use core::str::FromStr;
 use nom::branch::alt;
 use nom::bytes::complete::take_until;
 use nom::bytes::complete::take_while;
@@ -14,8 +20,6 @@ use nom::{
     IResult,
 };
 use nom_locate::LocatedSpan;
-use std::collections::BTreeMap;
-use std::str::FromStr;
 
 use crate::{
     parser::expr::ident,
@@ -84,18 +88,16 @@ fn parse_enum_def(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, TopLevel> 
 }
 
 fn parse_import(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, TopLevel> {
-    map(
-        tuple((
-            tag("import"),
-            ws,
-            list1("(", ")", ",", ident),
-            ws,
-            tag("from"),
-            ws,
-            string,
-        )),
-        |(_, _, v, _, _, _, s)| TopLevel::Import(v, s),
-    )(s)
+    let (l, (_, _, v, _, _, _, s)) = tuple((
+        tag("import"),
+        ws,
+        list1("(", ")", ",", ident),
+        ws,
+        tag("from"),
+        ws,
+        string,
+    ))(s)?;
+    Ok((l, TopLevel::Import(v, s)))
 }
 pub fn parse_top_level(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, TopLevel> {
     alt((
@@ -145,6 +147,6 @@ fn test_parse_comment() {
         "##DOC abcabcabc",
     ];
     for c in commnets {
-        println!("{:?}", parse_comments(LocatedSpan::new(c)));
+        // println!("{:?}", parse_comments(LocatedSpan::new(c)));
     }
 }

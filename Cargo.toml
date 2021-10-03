@@ -1,11 +1,21 @@
+cargo-features = ["strip"]
+#[crate_type = "staticlib"]
 [package]
 name = "sap-lang"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[workspace]
+members = ["sap-lang-repl"]
+
+[profile.release]
+strip = "debuginfo"
+lto = true
+codegen-units = 1
+panic = "abort"
 
 [dependencies]
-nom_locate = "*"
-nom = "*"
-rustyline = "9.0.0"
+nom_locate = { version = "4", features = ["alloc"] }
+nom = { version = "7", features = ["alloc"] }
+# rustyline = "9.0.0"

@@ -1,10 +1,9 @@
-use ::std::{
+use alloc::{collections::BTreeMap, rc::Rc};
+use core::{
     borrow::BorrowMut,
     cell::UnsafeCell,
-    collections::HashMap,
     fmt::Debug,
     ops::{Deref, DerefMut},
-    rc::Rc,
 };
 
 pub mod type_checker;
@@ -27,7 +26,7 @@ pub struct Runner {
     eval_context: Rc<UnsafeCell<EvalContext>>,
 }
 impl Debug for Runner {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Runner")
             .field("type_check_context", unsafe {
                 &*self.type_check_context.as_ref().get()
@@ -43,12 +42,12 @@ impl Runner {
     pub fn new() -> Self {
         let type_check_context = Rc::new(UnsafeCell::new(TypeCheckContext {
             parent: None,
-            free_var: HashMap::new(),
-            alias: HashMap::new(),
+            free_var: BTreeMap::new(),
+            alias: BTreeMap::new(),
         }));
         let eval_context = Rc::new(UnsafeCell::new(EvalContext {
             parent: None,
-            free_var: HashMap::new(),
+            free_var: BTreeMap::new(),
         }));
         Self {
             type_check_context,

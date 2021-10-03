@@ -1,4 +1,9 @@
-use std::collections::BTreeMap;
+use alloc::{
+    boxed::Box,
+    collections::BTreeMap,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use nom::{
     branch::alt,
@@ -150,7 +155,7 @@ fn parse_object(
                     opt(ws),
                     parse_expr,
                 )),
-                |(c, s, _, _, _, e)| ((c, s.to_owned()), e),
+                |(c, s, _, _, _, e)| ((c, s.to_string()), e),
             ),
             map(
                 tuple((
@@ -226,7 +231,7 @@ fn parse_for(
             opt(ws),
             parse_expr,
         )),
-        |(_, _, i, _, _, _, e, _, b)| (i.to_owned(), Box::new(e), Box::new(b)),
+        |(_, _, i, _, _, _, e, _, b)| (i.to_string(), Box::new(e), Box::new(b)),
     )(s)
 }
 
@@ -459,6 +464,6 @@ fn test_expr() {
         // assert!(r.is_ok());
         // let (r0, r1) = r.unwrap();
         // assert_eq!(r0, "");
-        println!("{:?}\n", r);
+        // println!("{:?}\n", r);
     }
 }

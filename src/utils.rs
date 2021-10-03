@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use nom::bytes::complete::take_till;
 use nom::{
     bytes::complete::{tag, take_till1},

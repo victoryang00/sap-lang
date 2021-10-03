@@ -1,9 +1,7 @@
 mod elab;
-use std::{
-    cell::UnsafeCell,
-    collections::{BTreeMap, HashMap},
-    rc::Rc,
-};
+use core::cell::UnsafeCell;
+
+use alloc::{boxed::Box, collections::BTreeMap, rc::Rc, string::String, vec, vec::Vec};
 
 use crate::{
     interpreter::type_checker::elab::type_elab,
@@ -17,8 +15,8 @@ use crate::{
 #[derive(Debug)]
 pub struct TypeCheckContext {
     pub(crate) parent: Option<Rc<UnsafeCell<TypeCheckContext>>>,
-    pub(crate) free_var: HashMap<String, Type>,
-    pub(crate) alias: HashMap<String, Type>,
+    pub(crate) free_var: BTreeMap<String, Type>,
+    pub(crate) alias: BTreeMap<String, Type>,
 }
 impl TypeCheckContext {
     fn get_alias<'a>(&'a mut self, alias: &'a String) -> Option<Type> {
@@ -42,8 +40,8 @@ impl TypeCheckContext {
     fn new_with(context: Rc<UnsafeCell<TypeCheckContext>>) -> Self {
         Self {
             parent: Some(context),
-            free_var: HashMap::new(),
-            alias: HashMap::new(),
+            free_var: BTreeMap::new(),
+            alias: BTreeMap::new(),
         }
     }
 }

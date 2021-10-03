@@ -1,9 +1,10 @@
-use std::{
+use alloc::{
+    borrow::ToOwned, boxed::Box, collections::BTreeMap, rc::Rc, string::String, vec, vec::Vec,
+};
+use core::{
     borrow::{Borrow, BorrowMut},
     cell::UnsafeCell,
-    collections::{BTreeMap, HashMap},
     ops::{Deref, DerefMut},
-    rc::Rc,
 };
 
 use nom::error::context;
@@ -19,13 +20,13 @@ use crate::parser::{
 #[derive(Debug, Clone)]
 pub struct EvalContext {
     pub(crate) parent: Option<Rc<UnsafeCell<EvalContext>>>,
-    pub(crate) free_var: HashMap<String, Rc<UnsafeCell<Value>>>,
+    pub(crate) free_var: BTreeMap<String, Rc<UnsafeCell<Value>>>,
 }
 impl EvalContext {
     fn new_with(context: Rc<UnsafeCell<EvalContext>>) -> Self {
         Self {
             parent: Some(context),
-            free_var: HashMap::new(),
+            free_var: BTreeMap::new(),
         }
     }
 
@@ -51,14 +52,14 @@ pub enum Value {
     // entrys, current call status, eval context, expr
     Function(
         Vec<String>,
-        HashMap<String, Rc<UnsafeCell<Value>>>,
+        BTreeMap<String, Rc<UnsafeCell<Value>>>,
         Rc<UnsafeCell<EvalContext>>,
         CommentedExpr,
     ),
     NativeFunction(
         String,
         Vec<String>,
-        HashMap<String, Rc<UnsafeCell<Value>>>,
+        BTreeMap<String, Rc<UnsafeCell<Value>>>,
         unsafe extern "C" fn(usize, va: *mut *mut Value) -> UnsafeCell<Value>,
     ),
     Array(Vec<Rc<UnsafeCell<Value>>>),
@@ -69,8 +70,8 @@ pub enum Value {
     /// same as null
     Error(String),
 }
-impl std::fmt::Debug for Value {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Debug for Value {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Any(arg0) => f.debug_tuple("Any").field(arg0).finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
@@ -325,7 +326,7 @@ pub fn eval_expr(
             let ct = Rc::new(UnsafeCell::new(EvalContext::new_with(context.clone())));
             Ok(Rc::new(UnsafeCell::new(Value::Function(
                 a.iter().map(|(s, _)| s.clone()).collect::<Vec<_>>(),
-                HashMap::new(),
+                BTreeMap::new(),
                 ct,
                 *(c.clone()),
             ))))

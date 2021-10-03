@@ -1,9 +1,8 @@
-use std::{
-    cell::{RefCell, UnsafeCell},
-    collections::HashMap,
-    ffi::VaList,
-    rc::Rc,
+use alloc::{
+    borrow::ToOwned, boxed::Box, collections::BTreeMap, fmt::format, format, rc::Rc,
+    string::String, vec, vec::Vec,
 };
+use core::cell::UnsafeCell;
 
 use crate::parser::{
     expr::{literal::Number, CommentedExpr, Expr},
@@ -18,7 +17,7 @@ use super::{
 struct NativeFunction {
     name: String,
     args: Vec<String>,
-    filled_args: HashMap<String, Rc<UnsafeCell<Value>>>,
+    filled_args: BTreeMap<String, Rc<UnsafeCell<Value>>>,
     ptr: extern "C" fn(usize, va: *mut *mut Value) -> UnsafeCell<Value>,
 }
 
@@ -88,7 +87,7 @@ pub fn add_std(ty: &mut TypeCheckContext, ev: &mut EvalContext) {
         "id".to_owned(),
         Rc::new(UnsafeCell::new(Value::Function(
             vec!["i".to_owned()],
-            HashMap::new(),
+            BTreeMap::new(),
             Rc::new(UnsafeCell::new(ev.clone())),
             CommentedExpr::from_expr(Expr::Ident(vec!["i".to_owned()])),
         ))),
@@ -98,7 +97,7 @@ pub fn add_std(ty: &mut TypeCheckContext, ev: &mut EvalContext) {
         Rc::new(UnsafeCell::new(Value::NativeFunction(
             "_add".to_owned(),
             vec!["a".to_owned(), "b".to_owned()],
-            HashMap::new(),
+            BTreeMap::new(),
             add,
         ))),
     );
@@ -106,7 +105,7 @@ pub fn add_std(ty: &mut TypeCheckContext, ev: &mut EvalContext) {
         "add".to_owned(),
         Rc::new(UnsafeCell::new(Value::Function(
             vec!["a".to_owned(), "b".to_owned()],
-            HashMap::new(),
+            BTreeMap::new(),
             Rc::new(UnsafeCell::new(ev.clone())),
             CommentedExpr::from_expr(Expr::Call(
                 Box::new(CommentedExpr::from_expr(Expr::Ident(vec![

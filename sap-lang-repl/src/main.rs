@@ -1,23 +1,14 @@
-#![feature(exclusive_range_pattern)]
-#![feature(box_patterns)]
-#![feature(c_variadic)]
-#![feature(vec_into_raw_parts)]
-use std::cell::{RefCell, UnsafeCell};
-use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
-
-use nom_locate::LocatedSpan;
-use parser::expr::Expr;
-mod interpreter;
-mod parser;
-mod utils;
+extern crate alloc;
+use alloc::collections::BTreeMap;
+use alloc::rc::Rc;
+use core::cell::{RefCell, UnsafeCell};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use sap_lang::parse_single_line;
 
-use crate::interpreter::interpreter::{eval_expr, EvalContext};
-use crate::interpreter::type_checker::{type_check_expr, TypeCheckContext};
-use crate::interpreter::Runner;
-use crate::parser::parse_top_level;
+use sap_lang::interpreter::interpreter::{eval_expr, EvalContext};
+use sap_lang::interpreter::type_checker::{type_check_expr, TypeCheckContext};
+use sap_lang::interpreter::Runner;
 
 fn main() {
     println!("   ____\x1b[1;34m____ \x1b[0m    ___  __                  \x1b[1;32m| Next-GEN Confguration Template Generation Language\x1b[0m");
@@ -42,15 +33,14 @@ fn main() {
                 } else if line.as_str() == "debug!" {
                     println!("{:?}", runner)
                 } else {
-                    match parse_top_level(LocatedSpan::from(line.as_str())) {
-                        Ok((l, r)) => {
-                            if l.fragment() != &"" {
-                                println!("\x1b[1;31munable to parse substring:\x1b[0;0m {:?}", l);
-                            }
+                    match parse_single_line(line.as_str()) {
+                        Ok(r) => {
                             println!("parsed: {:?}", r);
                             match r {
-                                parser::TopLevel::Comment(c) => println!("comment: {:?}", c),
-                                parser::TopLevel::Expr(e) => {
+                                sap_lang::parser::TopLevel::Comment(c) => {
+                                    println!("comment: {:?}", c)
+                                }
+                                sap_lang::parser::TopLevel::Expr(e) => {
                                     let (t, v) = runner.run(*e);
                                     match v {
                                         Ok(t) => {
@@ -74,7 +64,7 @@ fn main() {
                                 _ => {}
                             }
                         }
-                        Err(e) => println!("ERROR, failed to parse {:?}", e),
+                        Err(e) => println!("\x1b[1;31mError: \x1b[0;0m {}", e),
                     }
                 }
             }

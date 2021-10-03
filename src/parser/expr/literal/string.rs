@@ -1,5 +1,6 @@
-use std::fs::File;
-
+use alloc::borrow::ToOwned;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use nom::branch::alt;
 use nom::bytes::complete::{escaped, is_a, is_not, tag, tag_no_case, take, take_until, take_while};
 use nom::character::complete::{anychar, char, digit1, hex_digit1, none_of, one_of};
@@ -59,7 +60,7 @@ pub fn rewrite<'a>(
                         }
                         i -= 1;
                         let c = u32::from_str_radix(&string, 16).unwrap();
-                        println!("C is {}", c);
+                        // println!("C is {}", c);
                         let c = char::from_u32(c).unwrap();
                         res.push(c);
                     }
@@ -96,17 +97,6 @@ pub fn rewrite<'a>(
         }
     }
     Ok((o, res))
-}
-
-#[test]
-fn test_rewrite() {
-    let toberewrite = r#"ass\{\}\n\v\t\r\n\rmother\n\'\"\101\x41"#;
-    println!(
-        "{}",
-        rewrite(LocatedSpan::from(""), LocatedSpan::from(toberewrite))
-            .unwrap()
-            .1
-    );
 }
 
 pub fn quoted_string(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, String> {
