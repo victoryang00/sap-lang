@@ -1,10 +1,18 @@
+mod elab;
 use std::{
     cell::UnsafeCell,
     collections::{BTreeMap, HashMap},
     rc::Rc,
 };
 
-use crate::parser::ty::Type;
+use crate::{
+    interpreter::type_checker::elab::type_elab,
+    parser::{
+        expr::{CommentedExpr, Expr},
+        ty::Type,
+        TopLevel,
+    },
+};
 
 #[derive(Debug)]
 pub struct TypeCheckContext {
@@ -40,82 +48,209 @@ impl TypeCheckContext {
     }
 }
 
-pub fn type_elab(context: Rc<UnsafeCell<TypeCheckContext>>, a: Type, b: Type) -> Result<Type, ()> {
-    match (a.clone(), b.clone()) {
-        (Type::Any, _) => Ok(b),
-        (_, Type::Any) => Ok(a),
-        (_, Type::Alias(alias)) => match unsafe { &mut *context.get() }.get_alias(&alias) {
-            Some(b) => type_elab(context, a, b),
-            None => Err(()),
-        },
-        (Type::Alias(alias), b) => match unsafe { &mut *context.get() }.get_alias(&alias) {
-            Some(a) => type_elab(context, a, b),
-            None => Err(()),
-        },
-        // number
-        (Type::Number, Type::Number) => Ok(a),
-        (Type::Number, _) => {
-            return Err(());
-        }
-        // string
-        (Type::String, Type::String) => Ok(a),
-        (Type::String, _) => {
-            return Err(());
-        }
-        // bool
-        (Type::Bool, Type::Bool) => Ok(a),
+pub fn type_check_toplevel(
+    toplevel: &mut TopLevel,
+    context: Rc<UnsafeCell<TypeCheckContext>>,
+) -> Result<Option<Type>, &'static str> {
+    match toplevel {
+        TopLevel::Comment(_) => Ok(None),
+        TopLevel::TypeDef(_, _) => todo!(),
+        TopLevel::EnumDef(_, _) => todo!(),
+        TopLevel::Import(_, _) => todo!(),
+        TopLevel::Expr(e) => Ok(type_check_expr(&mut *e, context).ok()),
+    }
+}
 
-        (Type::Bool, _) => {
-            return Err(());
+pub fn type_check_expr(
+    e: &mut CommentedExpr,
+    context: Rc<UnsafeCell<TypeCheckContext>>,
+) -> Result<Type, &'static str> {
+    let CommentedExpr { comment, expr: e } = e;
+    match e {
+        Expr::Quoted(e) => type_check_expr(e, context),
+        Expr::Block(es) => {
+            let ct = Rc::new(UnsafeCell::new(TypeCheckContext::new_with(context.clone())));
+            let tys = es
+                .iter_mut()
+                .map(|e| type_check_toplevel(e, ct.clone()))
+                .collect::<Vec<_>>();
+            for i in (tys.len() - 1)..0 {
+                if let Ok(Some(ty)) = tys[i].clone() {
+                    return Ok(ty);
+                }
+            }
+            Err("block element has no expr")
         }
-        // function
-        (Type::Function(args1, ret1), Type::Function(args2, ret2)) => {
-            match args1.len().cmp(&args2.len()) {
-                std::cmp::Ordering::Equal => {
-                    let mut args = vec![];
-                    for i in 0..args1.len() {
-                        args.push(type_elab(
-                            context.clone(),
-                            args1[i].clone(),
-                            args2[i].clone(),
-                        )?);
+        Expr::Literal(l) => match l {
+            crate::parser::expr::literal::Literal::Null => Ok(Type::Any),
+            crate::parser::expr::literal::Literal::Bool(_) => Ok(Type::Bool),
+            crate::parser::expr::literal::Literal::String(_) => Ok(Type::String),
+            crate::parser::expr::literal::Literal::Number(_) => Ok(Type::Number),
+        },
+        Expr::Ident(i) => {
+            if i.len() > 1 {
+                unimplemented!()
+            } else {
+                match unsafe { &mut *context.get() }.get_free_var(i.get(0).unwrap()) {
+                    Some(fv) => Ok(unsafe { &mut *fv }.clone()),
+                    None => Ok(Type::Any),
+                }
+            }
+        }
+        Expr::Array(_) => Ok(Type::Array),
+        Expr::Object(es) => {
+            let mut b = BTreeMap::new();
+            for ((_, k), v) in es {
+                b.insert(
+                    k.clone(),
+                    type_check_expr(v, context.clone()).unwrap_or(Type::Any),
+                );
+            }
+            Ok(Type::Object(b))
+        }
+        Expr::Closure(a, b, c) => {
+            let ct = Rc::new(UnsafeCell::new(TypeCheckContext::new_with(context.clone())));
+            let mut aa = vec![];
+            for (k, v) in a {
+                aa.push(v.clone().unwrap_or(Type::Any));
+                unsafe { &mut *ct.get() }
+                    .free_var
+                    .insert(k.clone(), v.clone().unwrap_or(Type::Any));
+            }
+
+            let mut bb = type_check_expr(c, ct)?;
+
+            Ok(Type::Function(
+                aa,
+                Box::new(type_elab(context, bb, b.clone().unwrap_or(Type::Any))?),
+            ))
+        }
+        Expr::If(a, b, c) => {
+            let mut aa = type_check_expr(a, context.clone())?;
+            let mut bb = type_check_expr(b, context.clone())?;
+            let mut cc = type_check_expr(c, context.clone())?;
+            let _ = type_elab(context.clone(), aa, Type::Bool)?;
+            type_elab(context, bb, cc)
+        }
+        Expr::MultiIf(a, b) => todo!(),
+        Expr::For(_, _, _) => Ok(Type::Any),
+        Expr::Call(func, args) => {
+            let aaa = type_check_expr(func, context.clone())?;
+            let mut bbbs = args
+                .iter_mut()
+                .map(|b| type_check_expr(b, context.clone()).unwrap_or(Type::Any))
+                .collect::<Vec<_>>();
+            match aaa {
+                Type::Any => Ok(Type::Function(bbbs, Box::new(Type::Any))),
+                Type::Function(mut a, b) => {
+                    if a.len() > bbbs.len() {
+                        for i in 0..bbbs.len() {
+                            bbbs[i] = type_elab(context.clone(), a[i].clone(), bbbs[i].clone())?;
+                        }
+                        let args = a[bbbs.len()..]
+                            .iter()
+                            .map(|t| t.clone())
+                            .collect::<Vec<_>>();
+                        Ok(Type::Function(args, b))
+                    } else if a.len() < bbbs.len() {
+                        if let box f @ Type::Function(_, _) = b {
+                            let mut expr = CommentedExpr::from_expr(Expr::Call(
+                                Box::new(CommentedExpr::from_expr(Expr::Call(
+                                    func.clone(),
+                                    args[0..a.len()]
+                                        .iter()
+                                        .map(|x| x.clone())
+                                        .collect::<Vec<_>>(),
+                                ))),
+                                args[a.len()..]
+                                    .iter()
+                                    .map(|x| x.clone())
+                                    .collect::<Vec<_>>(),
+                            ));
+                            type_check_expr(&mut expr, context)
+                        } else {
+                            Err("too much argument")
+                        }
+                    } else {
+                        for i in 0..a.len() {
+                            a[i] = type_elab(
+                                context.clone(),
+                                a[i].clone(),
+                                type_check_expr(&mut args[i].clone(), context.clone())?,
+                            )?;
+                        }
+                        Ok(*b)
                     }
-                    let r = type_elab(context, *ret1, *ret2)?;
-                    Ok(Type::Function(args, Box::new(r)))
                 }
-                _ => {
-                    return Err(());
-                }
+                _ => Err("call with other expr"),
             }
         }
-        (Type::Function(_, _), _) => {
-            return Err(());
-        }
-        // array
-        (Type::Array, Type::Array) => Ok(a),
-        (Type::Array, _) => {
-            return Err(());
-        }
-        // object
-        (Type::Object(ass), Type::Object(bss)) => {
-            let mut m = BTreeMap::new();
-            for (k, v) in ass {
-                m.insert(k.clone(), v.clone());
+        Expr::ErrorHandle(e) => type_check_expr(e, context),
+        // TODO: FUCK ME
+        Expr::Bind(a, b) => {
+            let mut aaa = type_check_expr(a, context.clone())?;
+            let mut bbb = type_check_expr(b, context.clone())?;
+            match bbb {
+                Type::Any => Ok(Type::Any),
+                Type::Function(mut a, b) => match aaa {
+                    Type::Function(aa, mut bb) => {
+                        if a.len() < 1 {
+                            Err("no enought args")
+                        } else {
+                            let mut aa = aa;
+                            for i in 1..a.len() {
+                                aa.push(a[i].clone());
+                            }
+                            type_elab(context, *bb, a[0].clone())
+                        }
+                    }
+                    mut nonf => {
+                        if a.len() < 1 {
+                            Err("no enought args")
+                        } else {
+                            type_elab(context, a[0].clone(), nonf)
+                        }
+                    }
+                },
+                Type::Alias(a) => {
+                    todo!()
+                }
+                _ => Err("not bindable"),
             }
-            for (k, v) in bss {
-                if m.contains_key(&k) {
-                    return type_elab(context, m.get_mut(&k).unwrap().clone(), v);
+        }
+        // TODO: elab index
+        Expr::Index(a, b) => Ok(Type::Any),
+        Expr::Assign(a, b) => {
+            let mut aaa = type_check_expr(a, context.clone())?;
+            let mut bbb = type_check_expr(b, context.clone())?;
+            let r = type_elab(context.clone(), aaa, bbb.clone())?;
+            if let box CommentedExpr {
+                comment,
+                expr: Expr::Ident(aa),
+            } = a
+            {
+                if aa.len() > 1 {
+                    unimplemented!()
                 } else {
-                    m.insert(k.clone(), v.clone());
+                    match unsafe { &mut *context.get() }.get_free_var(aa.get(0).unwrap()) {
+                        Some(fv) => {
+                            unsafe { &mut *context.get() }
+                                .free_var
+                                .insert(aa[0].clone(), r.clone());
+                        }
+                        None => {
+                            unsafe { &mut *context.get() }
+                                .free_var
+                                .insert(aa[0].clone(), r.clone());
+                        }
+                    }
                 }
             }
-            Ok(Type::Object(m))
+            Ok(r)
         }
-        // enum
-        (Type::Enum(_), Type::Enum(_)) => todo!(),
-        (Type::Enum(_), _) => todo!(),
-        (a, b) => {
-            todo!("what happend with {:?} {:?}", a, b)
+        Expr::SpecifyTyped(ex, ty) => {
+            let mut tyy = type_check_expr(ex, context.clone())?;
+            type_elab(context, tyy, ty.clone())
         }
     }
 }

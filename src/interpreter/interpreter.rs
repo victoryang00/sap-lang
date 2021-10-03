@@ -6,9 +6,14 @@ use std::{
     rc::Rc,
 };
 
-use crate::parser::expr::{
-    literal::{Literal, Number},
-    reverse_bind, CommentedExpr, Expr,
+use nom::error::context;
+
+use crate::parser::{
+    expr::{
+        literal::{Literal, Number},
+        reverse_bind, CommentedExpr, Expr,
+    },
+    TopLevel,
 };
 
 #[derive(Debug, Clone)]
@@ -244,6 +249,19 @@ pub unsafe fn call_func_with_expr(
     }
 }
 
+pub fn eval_toplevel(
+    t: &mut TopLevel,
+    context: Rc<UnsafeCell<EvalContext>>,
+) -> Result<Rc<UnsafeCell<Value>>, &'static str> {
+    match t {
+        TopLevel::Comment(_) => todo!(),
+        TopLevel::TypeDef(_, _) => todo!(),
+        TopLevel::EnumDef(_, _) => todo!(),
+        TopLevel::Import(_, _) => todo!(),
+        TopLevel::Expr(box e) => eval_expr(e, context),
+    }
+}
+
 pub fn eval_expr(
     e: &mut CommentedExpr,
     context: Rc<UnsafeCell<EvalContext>>,
@@ -258,7 +276,7 @@ pub fn eval_expr(
             let ct = Rc::new(UnsafeCell::new(EvalContext::new_with(context.clone())));
             let mut r = Rc::new(UnsafeCell::new(Value::Null));
             for e in es {
-                r = eval_expr(e, ct.clone())?;
+                r = eval_toplevel(e, ct.clone())?;
             }
             Ok(r)
         }

@@ -12,7 +12,7 @@ use crate::parser::{
 
 use super::{
     interpreter::{EvalContext, Value},
-    typechecker::TypeCheckContext,
+    type_checker::TypeCheckContext,
 };
 
 struct NativeFunction {

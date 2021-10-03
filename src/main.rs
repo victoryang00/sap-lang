@@ -15,17 +15,10 @@ use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
 use crate::interpreter::interpreter::{eval_expr, EvalContext};
-use crate::interpreter::typechecker::{type_check_expr, TypeCheckContext};
+use crate::interpreter::type_checker::{type_check_expr, TypeCheckContext};
 use crate::interpreter::Runner;
 use crate::parser::parse_top_level;
 
-pub unsafe extern "C" fn add(n: usize, mut args: ...) -> usize {
-    let mut sum = 0;
-    for _ in 0..n {
-        sum += args.arg::<usize>();
-    }
-    sum
-}
 fn main() {
     println!("   ____\x1b[1;34m____ \x1b[0m    ___  __                  \x1b[1;32m| Next-GEN Confguration Template Generation Language\x1b[0m");
     println!("  / __\x1b[1;34m/ /\\ \\ *\x1b[0m / _ \\/ /  ___ ____  ___ _ \x1b[1;32m| \x1b[0m");
@@ -58,7 +51,7 @@ fn main() {
                             match r {
                                 parser::TopLevel::Comment(c) => println!("comment: {:?}", c),
                                 parser::TopLevel::Expr(e) => {
-                                    let (t, v) = runner.run_expr(e);
+                                    let (t, v) = runner.run(*e);
                                     match v {
                                         Ok(t) => {
                                             print!("eval result: {:?}", unsafe {

@@ -34,13 +34,13 @@ struct TypedExpr {
     ty: Type,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TopLevel {
     Comment(String),
     TypeDef(String, CommentedExpr),
     EnumDef(String, Vec<(String, CommentedExpr)>),
     Import(Vec<String>, String),
-    Expr(CommentedExpr),
+    Expr(Box<CommentedExpr>),
 }
 
 fn parse_type_def(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, TopLevel> {
@@ -103,7 +103,7 @@ pub fn parse_top_level(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, TopLe
         parse_type_def,
         parse_enum_def,
         parse_import,
-        map(parse_expr, |e| TopLevel::Expr(e)),
+        map(parse_expr, |e| TopLevel::Expr(Box::new(e))),
     ))(s)
 }
 

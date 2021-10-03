@@ -7,7 +7,7 @@ use ::std::{
     rc::Rc,
 };
 
-mod type_checker;
+pub mod type_checker;
 use crate::parser::{
     expr::{CommentedExpr, Expr},
     ty::Type,
@@ -16,12 +16,11 @@ use crate::parser::{
 use self::{
     interpreter::{eval_expr, EvalContext, Value},
     std::add_std,
-    typechecker::{type_check_expr, TypeCheckContext},
+    type_checker::{type_check_expr, TypeCheckContext},
 };
 
 pub mod interpreter;
 pub mod std;
-pub mod typechecker;
 
 pub struct Runner {
     type_check_context: Rc<UnsafeCell<TypeCheckContext>>,
@@ -64,7 +63,7 @@ impl Runner {
         );
         s
     }
-    pub fn run_expr(
+    pub fn run(
         &mut self,
         mut e: CommentedExpr,
     ) -> (

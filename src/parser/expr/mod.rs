@@ -15,8 +15,9 @@ use crate::utils::{list0, list1, valid_name, ws, ws_single_line};
 use self::literal::{literal, string::string, Literal};
 
 use super::{
-    parse_comment, parse_comments,
+    parse_comment, parse_comments, parse_top_level,
     ty::{parse_type, Type},
+    TopLevel,
 };
 
 pub(crate) mod literal;
@@ -24,7 +25,7 @@ pub(crate) mod literal;
 #[derive(Debug, Clone)]
 pub enum Expr {
     Quoted(Box<CommentedExpr>),
-    Block(Vec<CommentedExpr>),
+    Block(Vec<TopLevel>),
     Literal(Literal),
     Ident(Vec<String>),
     Array(Vec<CommentedExpr>),
@@ -102,9 +103,9 @@ pub fn ident(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, String> {
     }
 }
 
-fn parse_block(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Vec<CommentedExpr>> {
+fn parse_block(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Vec<TopLevel>> {
     // list 1 expand
-    list1("{", "}", ";", parse_expr)(s)
+    list1("{", "}", ";", parse_top_level)(s)
 }
 
 pub(crate) fn parse_closure(
@@ -349,7 +350,17 @@ pub fn reverse_bind(e: CommentedExpr) -> CommentedExpr {
     fn reverse_bind_expr(expr: Expr) -> Expr {
         match expr {
             Expr::Quoted(e) => Expr::Quoted(Box::new(reverse_bind(*e))),
-            Expr::Block(es) => Expr::Block(es.iter().map(|e| reverse_bind(e.clone())).collect()),
+            Expr::Block(es) => Expr::Block(
+                es.iter()
+                    .map(|e| {
+                        if let TopLevel::Expr(e) = e {
+                            TopLevel::Expr(Box::new(reverse_bind(*e.clone())))
+                        } else {
+                            e.clone()
+                        }
+                    })
+                    .collect(),
+            ),
             Expr::Array(es) => Expr::Array(es.iter().map(|e| reverse_bind(e.clone())).collect()),
             Expr::Object(o) => Expr::Object(
                 o.iter()
