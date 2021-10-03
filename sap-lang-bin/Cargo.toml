@@ -1,0 +1,16 @@
+cargo-features = ["strip"]
+[package]
+name = "sap-lang-bin"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+strip = "debuginfo"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[dependencies]
+rustyline = "9"
+sap-lang = { path = "../" }
+clap = "2.33.3"

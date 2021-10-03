@@ -55,7 +55,7 @@ impl Runner {
         }
     }
     pub fn new_with_std() -> Self {
-        let mut s = Self::new();
+        let s = Self::new();
         add_std(
             unsafe { &mut *s.type_check_context.as_ref().get() },
             unsafe { &mut *s.eval_context.as_ref().get() },
