@@ -37,8 +37,9 @@ comment
 ##RAW
 raw string
 raw string
-##ENDRAW
+##
 
+# TODO
 #INCLUDE "path" # also raw string
 
 true # bool

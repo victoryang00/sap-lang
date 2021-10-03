@@ -121,6 +121,11 @@ pub fn parse_comment(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, String>
             s,
             nom::error::ErrorKind::IsNot,
         )))
+    } else if let Ok((_, _)) = raw_string(s) {
+        Err(nom::Err::Error(nom::error::Error::new(
+            s,
+            nom::error::ErrorKind::IsNot,
+        )))
     } else {
         map(
             tuple((tag("#"), take_while(|s| s != '\n'), opt(ws))),
