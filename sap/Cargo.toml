@@ -8,3 +8,7 @@ edition = "2021"
 [dependencies]
 sap-lang = { path = "../" }
 clap = "*"
+serde = "*"
+serde_json = "*"
+serde-xml-rs = "*"
+serde_yaml = "*"

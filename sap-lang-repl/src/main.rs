@@ -35,7 +35,7 @@ fn main() {
                 } else {
                     match parse_single_line(line.as_str()) {
                         Ok(r) => {
-                            println!("parsed: {:?}", r);
+                            println!("parsed: {}", r);
                             match r {
                                 sap_lang::parser::TopLevel::Comment(c) => {
                                     println!("comment: {:?}", c)
@@ -54,7 +54,7 @@ fn main() {
                                     }
                                     match t {
                                         Ok(t) => {
-                                            println!("\x1b[1;32m\ttype: {:?}\x1b[0m", t)
+                                            println!("\x1b[1;32m\ttype: {}\x1b[0m", t)
                                         }
                                         Err(e) => {
                                             println!("\x1b[1;31m\ttype check error: {:?}\x1b[0m", e)

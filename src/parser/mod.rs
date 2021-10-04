@@ -47,6 +47,23 @@ pub enum TopLevel {
     Expr(Box<CommentedExpr>),
 }
 
+impl core::fmt::Display for TopLevel {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Comment(comment) => {
+                let mut c = String::from("\x1b[0;36m");
+                for l in comment.lines() {
+                    c += l;
+                }
+                c += "\x1b[0;0m";
+                write!(f, "#{}", c)
+            }
+            Self::Expr(e) => write!(f, "{}", e),
+            _ => todo!(),
+        }
+    }
+}
+
 fn parse_type_def(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, TopLevel> {
     map(
         tuple((

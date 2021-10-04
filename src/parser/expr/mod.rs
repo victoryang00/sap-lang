@@ -1,3 +1,5 @@
+use core::fmt::write;
+
 use alloc::{
     boxed::Box,
     collections::BTreeMap,
@@ -50,6 +52,122 @@ pub enum Expr {
     Index(Box<CommentedExpr>, Box<CommentedExpr>),
     Assign(Box<CommentedExpr>, Box<CommentedExpr>),
     SpecifyTyped(Box<CommentedExpr>, Type),
+}
+impl core::fmt::Display for Expr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Expr::Quoted(_) => todo!(),
+            Expr::Block(es) => {
+                write!(f, "\x1b[1;35m{{ \x1b[0m")?;
+                for (n, s) in es.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "{}", s)?;
+                }
+                write!(f, "\x1b[1;35m }}\x1b[0m")
+            }
+            Expr::Literal(l) => write!(f, "{}", l),
+            Expr::Ident(i) => {
+                for (n, s) in i.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, "::")?;
+                    }
+                    write!(f, "\x1b[0;34m{}\x1b[0m", s)?;
+                }
+                Ok(())
+            }
+            Expr::Array(a) => {
+                write!(f, "\x1b[1;35m[\x1b[0m")?;
+                for (n, s) in a.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", s)?;
+                }
+                write!(f, "\x1b[1;35m]\x1b[0m")
+            }
+            Expr::Object(o) => {
+                write!(f, "\x1b[1;35m{{\x1b[0m")?;
+                for (n, s) in o.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, ", ")?;
+                    }
+                    let ((comment, n), e) = s;
+                    let mut c = String::from("\x1b[0;36m");
+                    if let Some(comment) = &comment {
+                        for l in comment.lines() {
+                            c += l;
+                        }
+                    }
+                    c += "\x1b[0;0m";
+                    write!(f, "{}", c)?;
+                    write!(f, "\x1b[1;32m{}\x1b[0m: {}", n, e)?;
+                }
+                write!(f, "\x1b[1;35m}}\x1b[0m")
+            }
+            Expr::Closure(c, t, b) => {
+                write!(f, "\x1b[1;35m(\x1b[0m")?;
+                for (n, s) in c.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, ", ")?;
+                    }
+                    let (s, t) = s;
+                    if let Some(t) = t {
+                        write!(f, "\x1b[0;34m{}\x1b[0m: {}", s, t);
+                    } else {
+                        write!(f, "\x1b[0;34m{}\x1b[0m", s);
+                    }
+                }
+                write!(f, "\x1b[1;35m)\x1b[0m");
+                if let Some(t) = t {
+                    write!(f, " \x1b[1;35m->\x1b[0m {}", t)?;
+                }
+                write!(f, " {}", b)
+            }
+            Expr::If(a, b, c) => {
+                write!(f, "\x1b[1;35mif \x1b[0m")?;
+                write!(f, "{}", b)?;
+                write!(f, " \x1b[1;35m else \x1b[0m")?;
+                write!(f, "{}", c)
+            }
+            Expr::MultiIf(_, _) => todo!(),
+            Expr::For(_, _, _) => todo!(),
+            Expr::Call(a, b) => {
+                write!(f, "{}", a)?;
+                write!(f, "\x1b[1;35m(\x1b[0m")?;
+                for (n, s) in b.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", s)?;
+                }
+                write!(f, "\x1b[1;35m)\x1b[0m")
+            }
+            Expr::ErrorHandle(e) => write!(f, "{}\x1b[1;35m?\x1b[0m", e),
+            Expr::Bind(a, b) => write!(f, "{}\x1b[1;35m.\x1b[0m{}", a, b),
+            Expr::Index(a, b) => write!(f, "{}\x1b[1;35m[\x1b[0m{}\x1b[1;35m]\x1b[0m", a, b),
+            Expr::Assign(a, b) => write!(f, "{}\x1b[1;35m = \x1b[0m{}", a, b),
+            Expr::SpecifyTyped(a, b) => write!(f, "{}\x1b[1;35m : \x1b[0m{}", a, b),
+        }
+    }
+}
+
+impl core::fmt::Display for CommentedExpr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut c = String::from("\x1b[0;36m");
+        if let Some(comment) = &self.comment {
+            for l in comment.lines() {
+                c += l;
+            }
+        }
+        c += "\x1b[0;0m";
+        if c.as_str() != "\x1b[0;36m\x1b[0;0m" {
+            write!(f, "#{}", c)?;
+        }
+
+        write!(f, "{}", self.expr)
+    }
 }
 
 #[derive(Debug, Clone)]

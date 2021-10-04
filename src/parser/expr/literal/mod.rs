@@ -23,6 +23,15 @@ pub enum Number {
     Integer(i128),
     Floating(f64),
 }
+impl core::fmt::Display for Number {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Number::Integer(i) => write!(f, "{}", i),
+            Number::Floating(i) => write!(f, "{}", i),
+        }
+    }
+}
+
 impl Number {
     pub fn int(self) -> i128 {
         match self {
@@ -42,7 +51,16 @@ pub enum Literal {
     Number(Number),
     // Default,
 }
-
+impl core::fmt::Display for Literal {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Literal::Null => write!(f, "\x1b[1;33mnull\x1b[0m"),
+            Literal::Bool(b) => write!(f, "\x1b[1;33m{}\x1b[0m", b),
+            Literal::String(s) => write!(f, "\x1b[1;34m{:?}\x1b[0m", s),
+            Literal::Number(n) => write!(f, "\x1b[1;33m{}\x1b[0m", n),
+        }
+    }
+}
 pub fn literal(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Literal> {
     alt((
         // map(struct_::struct_, |s| Literal::Struct(s)),

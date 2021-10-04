@@ -28,6 +28,41 @@ pub enum Type {
     Enum(Vec<Type>),
     Alias(String),
 }
+impl core::fmt::Display for Type {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Type::Any => write!(f, "\x1b[1;32many\x1b[0m"),
+            Type::Number => write!(f, "\x1b[1;32mnumber\x1b[0m"),
+            Type::String => write!(f, "\x1b[1;32mstring\x1b[0m"),
+            Type::Bool => write!(f, "\x1b[1;32mbool\x1b[0m"),
+            Type::Function(ps, r) => {
+                write!(f, "\x1b[1;35m(\x1b[0m")?;
+                for (n, s) in ps.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", s)?;
+                }
+                write!(f, "\x1b[1;35m)\x1b[0m")?;
+                write!(f, " \x1b[1;35m->\x1b[0m {}", r)
+            }
+            Type::Array => write!(f, "\x1b[1;32marray\x1b[0m"),
+            Type::Object(o) => {
+                write!(f, "\x1b[1;35m{{\x1b[0m")?;
+                for (n, s) in o.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, ", ")?;
+                    }
+                    let (sss, ssss) = s;
+                    write!(f, "\x1b[1;32m{}\x1b[0m: {}", sss, ssss)?;
+                }
+                write!(f, "\x1b[1;35m}}\x1b[0m")
+            }
+            Type::Enum(_) => todo!(),
+            Type::Alias(_) => todo!(),
+        }
+    }
+}
 
 pub fn parse_function_type(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Type> {
     let (l, (v, _, _, _, t)) = tuple((
