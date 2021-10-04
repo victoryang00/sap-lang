@@ -41,7 +41,7 @@ fn main() {
                                     println!("comment: {:?}", c)
                                 }
                                 sap_lang::parser::TopLevel::Expr(e) => {
-                                    let (t, v) = runner.run(*e);
+                                    let (t, v) = runner.type_check_and_run(*e);
                                     match v {
                                         Ok(t) => {
                                             print!("eval result: {:?}", unsafe {

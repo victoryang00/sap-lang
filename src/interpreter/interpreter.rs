@@ -44,8 +44,6 @@ impl EvalContext {
 }
 #[derive(Clone)]
 pub enum Value {
-    Any(Rc<UnsafeCell<Value>>),
-    // AnyArgsList,
     Number(Number),
     String(String),
     Bool(bool),
@@ -73,7 +71,6 @@ pub enum Value {
 impl core::fmt::Debug for Value {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::Any(arg0) => f.debug_tuple("Any").field(arg0).finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
             Self::Bool(arg0) => f.debug_tuple("Bool").field(arg0).finish(),
@@ -117,12 +114,14 @@ impl core::fmt::Debug for Value {
 
 pub unsafe fn call_func_with_expr(
     f: Value,
-    mut args: Vec<CommentedExpr>,
+    args: Vec<CommentedExpr>,
     context: Rc<UnsafeCell<EvalContext>>,
 ) -> Result<Rc<UnsafeCell<Value>>, &'static str> {
     let mut v = vec![];
-    for mut a in &mut args {
-        let a = eval_expr(a, context.clone())?;
+    for a in &args {
+        let a = Rc::new(UnsafeCell::new(
+            unsafe { &*eval_expr(a, context.clone())?.get() }.clone(),
+        ));
         v.push(a);
     }
     if let Value::Function(fargs, h, ct, fb) = &mut f.clone() {
@@ -251,7 +250,7 @@ pub unsafe fn call_func_with_expr(
 }
 
 pub fn eval_toplevel(
-    t: &mut TopLevel,
+    t: &TopLevel,
     context: Rc<UnsafeCell<EvalContext>>,
 ) -> Result<Rc<UnsafeCell<Value>>, &'static str> {
     match t {
@@ -264,7 +263,7 @@ pub fn eval_toplevel(
 }
 
 pub fn eval_expr(
-    e: &mut CommentedExpr,
+    e: &CommentedExpr,
     context: Rc<UnsafeCell<EvalContext>>,
 ) -> Result<Rc<UnsafeCell<Value>>, &'static str> {
     // println!("trace: expr: {:?} context: {:?}", e, unsafe {
@@ -356,8 +355,14 @@ pub fn eval_expr(
             let mut f = unsafe { &mut *f.get() };
             unsafe { call_func_with_expr(f.clone(), args.clone(), context) }
         }
-        Expr::ErrorHandle(e) => match eval_expr(e.borrow_mut(), context) {
-            Ok(e) => Ok(e),
+        Expr::ErrorHandle(e) => match eval_expr(e.borrow(), context) {
+            Ok(e) => {
+                if let Value::Error(_) = unsafe { &*e.as_ref().get() } {
+                    Ok(Rc::new(UnsafeCell::new(Value::Null)))
+                } else {
+                    Ok(e)
+                }
+            }
             Err(_) => Ok(Rc::new(UnsafeCell::new(Value::Null))),
         },
         // TODO: FUCK ME
@@ -448,13 +453,28 @@ pub fn eval_expr(
                         Number::Integer(i) => *i as usize,
                         Number::Floating(f) => (*f).floor() as usize,
                     };
-                    Ok(a[n].clone())
+                    match a.get(n) {
+                        Some(v) => Ok(v.clone()),
+                        None => {
+                            for _ in a.len()..=n {
+                                a.push(Rc::new(UnsafeCell::new(Value::Null)))
+                            }
+                            Ok(a[n].clone())
+                        }
+                    }
                 } else {
                     panic!("TYPE CHECKER?!")
                 }
             } else if let Value::Object(o) = aaa {
                 if let Value::String(s) = bbb {
-                    Ok(o[s].clone())
+                    match o.get(s) {
+                        Some(v) => Ok(v.clone()),
+                        None => {
+                            let v = Rc::new(UnsafeCell::new(Value::Null));
+                            o.insert(s.clone(), v.clone());
+                            Ok(v)
+                        }
+                    }
                 } else {
                     panic!("TYPE CHECKER!!!!!!")
                 }
@@ -479,12 +499,36 @@ pub fn eval_expr(
                         if aa.len() > 1 {
                             unimplemented!()
                         } else {
-                            unsafe { &mut *context.as_ref().get() }.free_var.insert(
-                                aa.last().unwrap().clone(),
-                                Rc::new(UnsafeCell::new(unsafe { &*bbb.as_ref().get() }.clone())),
+                            /*
+                            a = <a>;
+                            ---
+                            _b = (a)<a>;
+                            a = _b(_b);
+                            */
+                            let name = aa.last().unwrap().clone();
+                            let clos = Value::Function(
+                                vec![name.clone()],
+                                BTreeMap::new(),
+                                context.clone(),
+                                *b.clone(),
                             );
+                            unsafe { &mut *context.as_ref().get() }
+                                .free_var
+                                .insert(name.clone(), Rc::new(UnsafeCell::new(clos.clone())));
+                            let call_res = unsafe {
+                                call_func_with_expr(
+                                    clos,
+                                    vec![CommentedExpr::from_expr(Expr::Ident(vec![name.clone()]))],
+                                    context.clone(),
+                                )
+                            }?;
+                            let call_res =
+                                Rc::new(UnsafeCell::new(unsafe { &*call_res.get() }.clone()));
+                            unsafe { &mut *context.as_ref().get() }
+                                .free_var
+                                .insert(name.clone(), call_res.clone());
+                            Ok(call_res)
                         }
-                        Ok(bbb)
                     } else {
                         panic!("FUCK ME")
                     }
@@ -492,6 +536,6 @@ pub fn eval_expr(
             };
             aaa
         }
-        Expr::SpecifyTyped(ex, ty) => eval_expr(ex.borrow_mut(), context),
+        Expr::SpecifyTyped(ex, ty) => eval_expr(ex.borrow(), context),
     }
 }

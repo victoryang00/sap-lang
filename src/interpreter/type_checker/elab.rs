@@ -28,20 +28,13 @@ pub fn type_elab(
         },
         // number
         (Type::Number, Type::Number) => Ok(a),
-        (Type::Number, _) => {
-            return Err("type mismatch");
-        }
+
         // string
         (Type::String, Type::String) => Ok(a),
-        (Type::String, _) => {
-            return Err("type mismatch");
-        }
+
         // bool
         (Type::Bool, Type::Bool) => Ok(a),
 
-        (Type::Bool, _) => {
-            return Err("type mismatch");
-        }
         // function
         (Type::Function(args1, ret1), Type::Function(args2, ret2)) => {
             match args1.len().cmp(&args2.len()) {
@@ -62,14 +55,8 @@ pub fn type_elab(
                 }
             }
         }
-        (Type::Function(_, _), _) => {
-            return Err("type mismatch");
-        }
         // array
         (Type::Array, Type::Array) => Ok(a),
-        (Type::Array, _) => {
-            return Err("type mismatch");
-        }
         // object
         (Type::Object(ass), Type::Object(bss)) => {
             let mut m = BTreeMap::new();
@@ -86,8 +73,30 @@ pub fn type_elab(
             Ok(Type::Object(m))
         }
         // enum
-        (Type::Enum(_), Type::Enum(_)) => todo!(),
-        (Type::Enum(_), _) => todo!(),
+        (Type::Enum(aa), Type::Enum(b)) => {
+            for t in b {
+                if aa
+                    .iter()
+                    .position(|x| type_elab(context.clone(), x.clone(), t.clone()).is_ok())
+                    .is_some()
+                {
+                } else {
+                    return Err("type mismatch");
+                }
+            }
+            Ok(a)
+        }
+        (Type::Enum(us), t) => {
+            if us
+                .iter()
+                .position(|x| type_elab(context.clone(), x.clone(), t.clone()).is_ok())
+                .is_some()
+            {
+                Ok(a)
+            } else {
+                Err("type mismatch")
+            }
+        }
         (a, b) => {
             todo!("what happend with {:?} {:?}", a, b)
         }

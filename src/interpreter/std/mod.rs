@@ -1,6 +1,15 @@
+mod numerical;
+
 use alloc::{
-    borrow::ToOwned, boxed::Box, collections::BTreeMap, fmt::format, format, rc::Rc,
-    string::String, vec, vec::Vec,
+    borrow::ToOwned,
+    boxed::Box,
+    collections::BTreeMap,
+    fmt::format,
+    format,
+    rc::Rc,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
 };
 use core::cell::UnsafeCell;
 
@@ -9,9 +18,12 @@ use crate::parser::{
     ty::Type,
 };
 
+use self::numerical::add_std_numerical;
+
 use super::{
     interpreter::{EvalContext, Value},
     type_checker::TypeCheckContext,
+    Runner,
 };
 
 struct NativeFunction {
@@ -31,91 +43,22 @@ impl NativeFunction {
         )))
     }
 }
-
-unsafe extern "C" fn add(args_count: usize, va: *mut *mut Value) -> UnsafeCell<Value> {
+unsafe extern "C" fn err(args_count: usize, va: *mut *mut Value) -> UnsafeCell<Value> {
     let mut vec = Vec::from_raw_parts(va, args_count, 2);
     let v1 = &mut *vec[0];
-    let v2 = &mut *vec[1];
-    if let Value::Number(n1) = v1 {
-        if let Value::Number(n2) = v2 {
-            match n1 {
-                crate::parser::expr::literal::Number::Integer(i1) => match n2 {
-                    crate::parser::expr::literal::Number::Integer(i2) => {
-                        UnsafeCell::new(Value::Number(Number::Integer(*i1 + *i2)))
-                    }
-                    crate::parser::expr::literal::Number::Floating(f2) => {
-                        UnsafeCell::new(Value::Number(Number::Floating(*i1 as f64 + *f2)))
-                    }
-                },
-                crate::parser::expr::literal::Number::Floating(i2) => match n2 {
-                    crate::parser::expr::literal::Number::Floating(f2) => {
-                        UnsafeCell::new(Value::Number(Number::Floating(*i2 + *f2)))
-                    }
-                    crate::parser::expr::literal::Number::Integer(i3) => {
-                        UnsafeCell::new(Value::Number(Number::Floating(*i2 + *i3 as f64)))
-                    }
-                },
-            }
-        } else {
-            UnsafeCell::new(Value::Error(format!(
-                "TYPE MISMACHED IN RUNTIME with {:?}",
-                v2
-            )))
-        }
+    if let Value::String(s) = v1 {
+        UnsafeCell::new(Value::Error(s.clone()))
     } else {
-        UnsafeCell::new(Value::Error(format!(
-            "TYPE MISMACHED IN RUNTIME with {:?}",
-            v1
-        )))
+        panic!("YOU DOESN'T EVEN KNOW HOW TO USE ERR WITH A SIMPLE STRING OR WHAT?")
     }
 }
+unsafe extern "C" fn id(args_count: usize, va: *mut *mut Value) -> UnsafeCell<Value> {
+    let mut vec = Vec::from_raw_parts(va, args_count, 2);
+    let v1 = &mut *vec[0];
+    UnsafeCell::new(v1.clone())
+}
 
-pub fn add_std(ty: &mut TypeCheckContext, ev: &mut EvalContext) {
-    ty.free_var.insert(
-        "_add".to_owned(),
-        Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Number)),
-    );
-    ty.free_var.insert(
-        "add".to_owned(),
-        Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Number)),
-    );
-    ty.free_var.insert(
-        "id".to_owned(),
-        Type::Function(vec![Type::Any], Box::new(Type::Any)),
-    );
-    ev.free_var.insert(
-        "id".to_owned(),
-        Rc::new(UnsafeCell::new(Value::Function(
-            vec!["i".to_owned()],
-            BTreeMap::new(),
-            Rc::new(UnsafeCell::new(ev.clone())),
-            CommentedExpr::from_expr(Expr::Ident(vec!["i".to_owned()])),
-        ))),
-    );
-    ev.free_var.insert(
-        "_add".to_owned(),
-        Rc::new(UnsafeCell::new(Value::NativeFunction(
-            "_add".to_owned(),
-            vec!["a".to_owned(), "b".to_owned()],
-            BTreeMap::new(),
-            add,
-        ))),
-    );
-    ev.free_var.insert(
-        "add".to_owned(),
-        Rc::new(UnsafeCell::new(Value::Function(
-            vec!["a".to_owned(), "b".to_owned()],
-            BTreeMap::new(),
-            Rc::new(UnsafeCell::new(ev.clone())),
-            CommentedExpr::from_expr(Expr::Call(
-                Box::new(CommentedExpr::from_expr(Expr::Ident(vec![
-                    "_add".to_owned()
-                ]))),
-                vec![
-                    CommentedExpr::from_expr(Expr::Ident(vec!["a".to_owned()])),
-                    CommentedExpr::from_expr(Expr::Ident(vec!["b".to_owned()])),
-                ],
-            )),
-        ))),
-    );
+pub fn add_std(r: &mut Runner) {
+    //numerical
+    add_std_numerical(r);
 }

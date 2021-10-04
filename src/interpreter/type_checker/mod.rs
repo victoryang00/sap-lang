@@ -47,7 +47,7 @@ impl TypeCheckContext {
 }
 
 pub fn type_check_toplevel(
-    toplevel: &mut TopLevel,
+    toplevel: &TopLevel,
     context: Rc<UnsafeCell<TypeCheckContext>>,
 ) -> Result<Option<Type>, &'static str> {
     match toplevel {
@@ -55,12 +55,12 @@ pub fn type_check_toplevel(
         TopLevel::TypeDef(_, _) => todo!(),
         TopLevel::EnumDef(_, _) => todo!(),
         TopLevel::Import(_, _) => todo!(),
-        TopLevel::Expr(e) => Ok(type_check_expr(&mut *e, context).ok()),
+        TopLevel::Expr(e) => Ok(type_check_expr(&*e, context).ok()),
     }
 }
 
 pub fn type_check_expr(
-    e: &mut CommentedExpr,
+    e: &CommentedExpr,
     context: Rc<UnsafeCell<TypeCheckContext>>,
 ) -> Result<Type, &'static str> {
     let CommentedExpr { comment, expr: e } = e;
@@ -69,7 +69,7 @@ pub fn type_check_expr(
         Expr::Block(es) => {
             let ct = Rc::new(UnsafeCell::new(TypeCheckContext::new_with(context.clone())));
             let tys = es
-                .iter_mut()
+                .iter()
                 .map(|e| type_check_toplevel(e, ct.clone()))
                 .collect::<Vec<_>>();
             for i in (tys.len() - 1)..0 {
@@ -135,11 +135,11 @@ pub fn type_check_expr(
         Expr::Call(func, args) => {
             let aaa = type_check_expr(func, context.clone())?;
             let mut bbbs = args
-                .iter_mut()
+                .iter()
                 .map(|b| type_check_expr(b, context.clone()).unwrap_or(Type::Any))
                 .collect::<Vec<_>>();
             match aaa {
-                Type::Any => Ok(Type::Function(bbbs, Box::new(Type::Any))),
+                Type::Any => Ok(Type::Any),
                 Type::Function(mut a, b) => {
                     if a.len() > bbbs.len() {
                         for i in 0..bbbs.len() {
@@ -185,15 +185,18 @@ pub fn type_check_expr(
         }
         Expr::ErrorHandle(e) => type_check_expr(e, context),
         // TODO: FUCK ME
-        Expr::Bind(a, b) => {
-            let mut aaa = type_check_expr(a, context.clone())?;
-            let mut bbb = type_check_expr(b, context.clone())?;
+        Expr::Bind(ba, bb) => {
+            let mut aaa = type_check_expr(ba, context.clone())?;
+            let mut bbb = type_check_expr(bb, context.clone())?;
             match bbb {
                 Type::Any => Ok(Type::Any),
                 Type::Function(mut a, b) => match aaa {
                     Type::Function(aa, mut bb) => {
                         if a.len() < 1 {
-                            Err("no enought args")
+                            type_check_expr(
+                                &mut CommentedExpr::from_expr(Expr::Call(ba.clone(), vec![])),
+                                context,
+                            )
                         } else {
                             let mut aa = aa;
                             for i in 1..a.len() {
@@ -202,13 +205,10 @@ pub fn type_check_expr(
                             type_elab(context, *bb, a[0].clone())
                         }
                     }
-                    mut nonf => {
-                        if a.len() < 1 {
-                            Err("no enought args")
-                        } else {
-                            type_elab(context, a[0].clone(), nonf)
-                        }
-                    }
+                    mut nonf => type_check_expr(
+                        &mut CommentedExpr::from_expr(Expr::Call(bb.clone(), vec![*ba.clone()])),
+                        context,
+                    ),
                 },
                 Type::Alias(a) => {
                     todo!()
@@ -220,8 +220,7 @@ pub fn type_check_expr(
         Expr::Index(a, b) => Ok(Type::Any),
         Expr::Assign(a, b) => {
             let mut aaa = type_check_expr(a, context.clone())?;
-            let mut bbb = type_check_expr(b, context.clone())?;
-            let r = type_elab(context.clone(), aaa, bbb.clone())?;
+
             if let box CommentedExpr {
                 comment,
                 expr: Expr::Ident(aa),
@@ -234,17 +233,27 @@ pub fn type_check_expr(
                         Some(fv) => {
                             unsafe { &mut *context.get() }
                                 .free_var
-                                .insert(aa[0].clone(), r.clone());
-                        }
-                        None => {
+                                .insert(aa[0].clone(), Type::Any);
+                            let mut bbb = type_check_expr(b, context.clone())?;
+                            let r = type_elab(context.clone(), aaa, bbb.clone())?;
                             unsafe { &mut *context.get() }
                                 .free_var
                                 .insert(aa[0].clone(), r.clone());
+                            Ok(r)
+                        }
+                        None => {
+                            let mut bbb = type_check_expr(b, context.clone())?;
+                            let r = type_elab(context.clone(), Type::Any, bbb.clone())?;
+                            unsafe { &mut *context.get() }
+                                .free_var
+                                .insert(aa[0].clone(), r.clone());
+                            Ok(r)
                         }
                     }
                 }
+            } else {
+                unimplemented!()
             }
-            Ok(r)
         }
         Expr::SpecifyTyped(ex, ty) => {
             let mut tyy = type_check_expr(ex, context.clone())?;

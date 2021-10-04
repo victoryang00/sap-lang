@@ -1,4 +1,4 @@
-use alloc::{collections::BTreeMap, rc::Rc};
+use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec, vec::Vec};
 use core::{
     borrow::BorrowMut,
     cell::UnsafeCell,
@@ -56,13 +56,61 @@ impl Runner {
     }
     pub fn new_with_std() -> Self {
         let mut s = Self::new();
-        add_std(
-            unsafe { &mut *s.type_check_context.as_ref().get() },
-            unsafe { &mut *s.eval_context.as_ref().get() },
-        );
+        add_std(&mut s);
         s
     }
-    pub fn run(
+    pub fn add_and_wrap_native_function(
+        &mut self,
+        args_counts: usize,
+        name: String,
+        ptr: unsafe extern "C" fn(usize, va: *mut *mut Value) -> UnsafeCell<Value>,
+        type_info: Option<(Vec<Type>, Box<Type>)>,
+    ) {
+        let argss = (0..args_counts)
+            .collect::<Vec<_>>()
+            .iter()
+            .map(|i| format!("_{:?}", i))
+            .collect::<Vec<_>>();
+        let nname = format!("_{}", name.clone());
+        if let Some((a, b)) = type_info {
+            unsafe { &mut *self.type_check_context.as_ref().get() }
+                .free_var
+                .insert(name.clone(), Type::Function(a, b));
+        } else {
+            unsafe { &mut *self.type_check_context.as_ref().get() }
+                .free_var
+                .insert(name.clone(), Type::Any);
+        }
+        unsafe { &mut *self.eval_context.as_ref().get() }
+            .free_var
+            .insert(
+                nname.clone(),
+                Rc::new(UnsafeCell::new(Value::NativeFunction(
+                    nname.clone(),
+                    argss.clone(),
+                    BTreeMap::new(),
+                    ptr,
+                ))),
+            );
+        unsafe { &mut *self.eval_context.as_ref().get() }
+            .free_var
+            .insert(
+                name.clone(),
+                Rc::new(UnsafeCell::new(Value::Function(
+                    argss.clone(),
+                    BTreeMap::new(),
+                    self.eval_context.clone(),
+                    CommentedExpr::from_expr(Expr::Call(
+                        Box::new(CommentedExpr::from_expr(Expr::Ident(vec![nname]))),
+                        argss
+                            .iter()
+                            .map(|x| CommentedExpr::from_expr(Expr::Ident(vec![x.clone()])))
+                            .collect(),
+                    )),
+                ))),
+            );
+    }
+    pub fn type_check_and_run(
         &mut self,
         mut e: CommentedExpr,
     ) -> (

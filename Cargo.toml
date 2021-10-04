@@ -7,7 +7,7 @@ edition = "2021"
 
 
 [workspace]
-members = ["sap-lang-repl"]
+members = ["sap-lang-repl", "sap"]
 
 [profile.release]
 strip = "debuginfo"
