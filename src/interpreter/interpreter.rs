@@ -1,5 +1,6 @@
 use alloc::{
-    borrow::ToOwned, boxed::Box, collections::BTreeMap, rc::Rc, string::String, vec, vec::Vec,
+    borrow::ToOwned, boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec,
+    vec::Vec,
 };
 use core::{
     borrow::{Borrow, BorrowMut},
@@ -42,8 +43,9 @@ impl EvalContext {
         }
     }
 }
-#[derive(Clone)]
+
 pub enum Value {
+    Pair(String, Rc<UnsafeCell<Value>>),
     Number(Number),
     String(String),
     Bool(bool),
@@ -68,18 +70,58 @@ pub enum Value {
     /// same as null
     Error(String),
 }
+
+impl Clone for Value {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Pair(arg0, arg1) => Self::Pair(
+                arg0.clone(),
+                Rc::new(UnsafeCell::new(unsafe { &*arg1.get() }.clone())),
+            ),
+            Self::Number(arg0) => Self::Number(arg0.clone()),
+            Self::String(arg0) => Self::String(arg0.clone()),
+            Self::Bool(arg0) => Self::Bool(arg0.clone()),
+            Self::Function(arg0, arg1, arg2, arg3) => {
+                Self::Function(arg0.clone(), arg1.clone(), arg2.clone(), arg3.clone())
+            }
+            Self::NativeFunction(arg0, arg1, arg2, arg3) => {
+                Self::NativeFunction(arg0.clone(), arg1.clone(), arg2.clone(), arg3.clone())
+            }
+            Self::Array(arg0) => Self::Array(
+                arg0.iter()
+                    .map(|arg1| Rc::new(UnsafeCell::new(unsafe { &*arg1.get() }.clone())))
+                    .collect(),
+            ),
+            Self::Object(arg0) => Self::Object(
+                arg0.iter()
+                    .map(|(arg0, arg1)| {
+                        (
+                            arg0.clone(),
+                            Rc::new(UnsafeCell::new(unsafe { &*arg1.get() }.clone())),
+                        )
+                    })
+                    .collect(),
+            ),
+            Self::Enum(arg0) => Self::Enum(arg0.clone()),
+            Self::Null => Self::Null,
+            Self::Error(arg0) => Self::Error(arg0.clone()),
+        }
+    }
+}
 impl core::fmt::Debug for Value {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            Self::Pair(s, o) => f
+                .debug_tuple("Pair")
+                .field(s)
+                .field(unsafe { &*o.as_ref().get() })
+                .finish(),
             Self::Number(arg0) => f.debug_tuple("Number").field(arg0).finish(),
             Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
             Self::Bool(arg0) => f.debug_tuple("Bool").field(arg0).finish(),
-            Self::Function(arg0, arg1, arg2, arg3) => f
-                .debug_tuple("Function")
-                .field(arg0)
-                .field(arg1)
-                .field(arg3)
-                .finish(),
+            Self::Function(arg0, arg1, arg2, arg3) => {
+                f.debug_tuple("Function").field(arg0).field(arg1).finish()
+            }
             Self::NativeFunction(arg0, arg1, arg2, arg3) => f
                 .debug_tuple("NativeFunction")
                 .field(arg0)
@@ -254,8 +296,14 @@ pub fn eval_toplevel(
     context: Rc<UnsafeCell<EvalContext>>,
 ) -> Result<Rc<UnsafeCell<Value>>, &'static str> {
     match t {
-        TopLevel::Comment(_) => todo!(),
-        TopLevel::TypeDef(_, _) => todo!(),
+        TopLevel::Comment(c) => Ok(Rc::new(UnsafeCell::new(Value::Null))),
+        TopLevel::TypeDef(name, expr) => {
+            let clos = eval_expr(expr, context.clone())?;
+            unsafe { &mut *context.clone().get() }
+                .free_var
+                .insert(name.clone(), clos.clone());
+            Ok(Rc::new(UnsafeCell::new(Value::Null)))
+        }
         TopLevel::EnumDef(_, _) => todo!(),
         TopLevel::Import(_, _) => todo!(),
         TopLevel::Expr(box e) => eval_expr(e, context),
@@ -271,6 +319,10 @@ pub fn eval_expr(
     // });
     let CommentedExpr { comment, expr: e } = e;
     match e {
+        Expr::Pair(s, o) => Ok(Rc::new(UnsafeCell::new(Value::Pair(
+            s.clone(),
+            eval_expr(&*o, context)?,
+        )))),
         Expr::Quoted(e) => eval_expr(e, context),
         Expr::Block(es) => {
             let ct = Rc::new(UnsafeCell::new(EvalContext::new_with(context.clone())));
@@ -464,6 +516,31 @@ pub fn eval_expr(
                     }
                 } else {
                     panic!("TYPE CHECKER?!")
+                }
+            } else if let Value::Pair(s, o) = aaa {
+                if let Value::Number(n) = bbb {
+                    match n {
+                        Number::Integer(n) => {
+                            if *n == 0 {
+                                Ok(Rc::new(UnsafeCell::new(Value::String(s.clone()))))
+                            } else if *n == 1 {
+                                Ok(o.clone())
+                            } else {
+                                Err("Index only 0,1 allowed to index pair")
+                            }
+                        }
+                        Number::Floating(n) => {
+                            if *n == 0.0 {
+                                Ok(Rc::new(UnsafeCell::new(Value::String(s.clone()))))
+                            } else if *n == 1.0 {
+                                Ok(o.clone())
+                            } else {
+                                Err("Index only 0,1 allowed to index pair")
+                            }
+                        }
+                    }
+                } else {
+                    Err("only could index pair with number")
                 }
             } else if let Value::Object(o) = aaa {
                 if let Value::String(s) = bbb {

@@ -27,10 +27,11 @@ use super::{
     TopLevel,
 };
 
-pub(crate) mod literal;
+pub mod literal;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+    Pair(String, Box<CommentedExpr>),
     Quoted(Box<CommentedExpr>),
     Block(Vec<TopLevel>),
     Literal(Literal),
@@ -56,7 +57,16 @@ pub enum Expr {
 impl core::fmt::Display for Expr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Expr::Quoted(_) => todo!(),
+            Expr::Pair(s, e) => {
+                write!(f, "\x1b[1;35m(\x1b[0m")?;
+                write!(f, "\x1b[1;32m\"{}\"\x1b[0m: {}", s, e)?;
+                write!(f, "\x1b[1;35m)\x1b[0m")
+            }
+            Expr::Quoted(q) => {
+                write!(f, "\x1b[1;35m(\x1b[0m")?;
+                write!(f, "{}", q)?;
+                write!(f, "\x1b[1;35m)\x1b[0m")
+            }
             Expr::Block(es) => {
                 write!(f, "\x1b[1;35m{{ \x1b[0m")?;
                 for (n, s) in es.iter().enumerate() {
@@ -125,12 +135,11 @@ impl core::fmt::Display for Expr {
                 }
                 write!(f, " {}", b)
             }
-            Expr::If(a, b, c) => {
-                write!(f, "\x1b[1;35mif \x1b[0m")?;
-                write!(f, "{}", b)?;
-                write!(f, " \x1b[1;35m else \x1b[0m")?;
-                write!(f, "{}", c)
-            }
+            Expr::If(a, b, c) => write!(
+                f,
+                "\x1b[1;35mif\x1b[0m ({}) {} \x1b[1;35melse\x1b[0m {}",
+                a, b, c
+            ),
             Expr::MultiIf(_, _) => todo!(),
             Expr::For(_, _, _) => todo!(),
             Expr::Call(a, b) => {
@@ -352,7 +361,22 @@ fn parse_for(
         |(_, _, i, _, _, _, e, _, b)| (i.to_string(), Box::new(e), Box::new(b)),
     )(s)
 }
-
+fn parse_pair(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, (String, CommentedExpr)> {
+    map(
+        tuple((
+            tag("("),
+            opt(ws),
+            string,
+            opt(ws),
+            tag(":"),
+            opt(ws),
+            parse_expr,
+            opt(ws),
+            tag(")"),
+        )),
+        |(_, _, s, _, _, _, e, _, _)| (s, e),
+    )(s)
+}
 fn parse_multi_if(
     s: LocatedSpan<&str>,
 ) -> IResult<LocatedSpan<&str>, (Vec<(CommentedExpr, CommentedExpr)>, CommentedExpr)> {
@@ -430,11 +454,13 @@ fn expr_ll(l: CommentedExpr, r: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>,
         Ok((r, l))
     }
 }
+
 pub(crate) fn parse_expr(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, CommentedExpr> {
     let (l, r) = map(
         tuple((
             opt(parse_comments),
             alt((
+                map(parse_pair, |(a, b)| Expr::Pair(a, Box::new(b))),
                 map(parse_closure, |(a, b, c)| Expr::Closure(a, b, c)),
                 map(
                     tuple((tag("("), opt(ws), parse_expr, opt(ws), tag(")"))),

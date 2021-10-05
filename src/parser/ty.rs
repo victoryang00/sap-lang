@@ -17,6 +17,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub enum Type {
+    Pair(String, Box<Type>),
     Any,
     // AnyArgsList,
     Number,
@@ -31,6 +32,11 @@ pub enum Type {
 impl core::fmt::Display for Type {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
+            Type::Pair(s, t) => write!(
+                f,
+                "\x1b[1;35m(\x1b[0m\x1b[1;32m\"{}\"\x1b[0m: {}\x1b[1;35m)\x1b[0m",
+                s, t
+            ),
             Type::Any => write!(f, "\x1b[1;32many\x1b[0m"),
             Type::Number => write!(f, "\x1b[1;32mnumber\x1b[0m"),
             Type::String => write!(f, "\x1b[1;32mstring\x1b[0m"),
@@ -59,7 +65,7 @@ impl core::fmt::Display for Type {
                 write!(f, "\x1b[1;35m}}\x1b[0m")
             }
             Type::Enum(_) => todo!(),
-            Type::Alias(_) => todo!(),
+            Type::Alias(a) => write!(f, "\x1b[1;36m{}\x1b[0m", a),
         }
     }
 }

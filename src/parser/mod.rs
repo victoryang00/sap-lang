@@ -59,6 +59,11 @@ impl core::fmt::Display for TopLevel {
                 write!(f, "#{}", c)
             }
             Self::Expr(e) => write!(f, "{}", e),
+            Self::TypeDef(n, e) => write!(
+                f,
+                "\x1b[0;35mtype\x1b[0;36m {}\x1b[0;35m = \x1b[0m {}",
+                n, e
+            ),
             _ => todo!(),
         }
     }

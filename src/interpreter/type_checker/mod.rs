@@ -52,7 +52,20 @@ pub fn type_check_toplevel(
 ) -> Result<Option<Type>, &'static str> {
     match toplevel {
         TopLevel::Comment(_) => Ok(None),
-        TopLevel::TypeDef(_, _) => todo!(),
+        TopLevel::TypeDef(s, e) => {
+            let clos = type_check_expr(e, context.clone())?;
+            if let Type::Function(_, r) = clos.clone() {
+                unsafe { &mut *context.clone().get() }
+                    .free_var
+                    .insert(s.clone(), clos);
+                unsafe { &mut *context.clone().get() }
+                    .alias
+                    .insert(s.clone(), *r.clone());
+                Ok(Some(*r))
+            } else {
+                Err("not f")
+            }
+        }
         TopLevel::EnumDef(_, _) => todo!(),
         TopLevel::Import(_, _) => todo!(),
         TopLevel::Expr(e) => Ok(type_check_expr(&*e, context).ok()),
@@ -65,14 +78,19 @@ pub fn type_check_expr(
 ) -> Result<Type, &'static str> {
     let CommentedExpr { comment, expr: e } = e;
     match e {
+        Expr::Pair(s, e) => Ok(Type::Pair(
+            s.clone(),
+            Box::new(type_check_expr(&*e, context)?),
+        )),
         Expr::Quoted(e) => type_check_expr(e, context),
         Expr::Block(es) => {
             let ct = Rc::new(UnsafeCell::new(TypeCheckContext::new_with(context.clone())));
-            let tys = es
+            let mut tys = es
                 .iter()
                 .map(|e| type_check_toplevel(e, ct.clone()))
                 .collect::<Vec<_>>();
-            for i in (tys.len() - 1)..0 {
+            tys.reverse();
+            for i in 0..tys.len() {
                 if let Ok(Some(ty)) = tys[i].clone() {
                     return Ok(ty);
                 }
@@ -252,7 +270,7 @@ pub fn type_check_expr(
                     }
                 }
             } else {
-                unimplemented!()
+                type_check_expr(b, context)
             }
         }
         Expr::SpecifyTyped(ex, ty) => {

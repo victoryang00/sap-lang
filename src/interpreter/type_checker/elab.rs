@@ -98,7 +98,8 @@ pub fn type_elab(
             }
         }
         (a, b) => {
-            todo!("what happend with {:?} {:?}", a, b)
+            // todo!("what happend with {:?} {:?}", a, b)
+            Ok(Type::Any)
         }
     }
 }

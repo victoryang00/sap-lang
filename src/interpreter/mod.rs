@@ -10,12 +10,13 @@ pub mod type_checker;
 use crate::parser::{
     expr::{CommentedExpr, Expr},
     ty::Type,
+    TopLevel,
 };
 
 use self::{
-    interpreter::{eval_expr, EvalContext, Value},
+    interpreter::{eval_expr, eval_toplevel, EvalContext, Value},
     std::add_std,
-    type_checker::{type_check_expr, TypeCheckContext},
+    type_checker::{type_check_expr, type_check_toplevel, TypeCheckContext},
 };
 
 pub mod interpreter;
@@ -112,14 +113,14 @@ impl Runner {
     }
     pub fn type_check_and_run(
         &mut self,
-        mut e: CommentedExpr,
+        mut e: TopLevel,
     ) -> (
-        Result<Type, &'static str>,
+        Result<Option<Type>, &'static str>,
         Result<Rc<UnsafeCell<Value>>, &'static str>,
     ) {
         (
-            type_check_expr(&mut e, self.type_check_context.clone()),
-            eval_expr(&mut e, self.eval_context.clone()),
+            type_check_toplevel(&mut e, self.type_check_context.clone()),
+            eval_toplevel(&mut e, self.eval_context.clone()),
         )
     }
 }
