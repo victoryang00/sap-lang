@@ -1,4 +1,3 @@
-use alloc::vec::Vec;
 use nom::bytes::complete::take_till;
 use nom::{
     bytes::complete::{tag, take_till1},
@@ -8,6 +7,7 @@ use nom::{
     IResult,
 };
 use nom_locate::LocatedSpan;
+use std::vec::Vec;
 pub fn is_ws(s: char) -> bool {
     match s {
         '\u{0009}' => true,

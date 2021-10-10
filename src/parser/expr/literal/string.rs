@@ -1,15 +1,15 @@
-use alloc::borrow::ToOwned;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 use nom::branch::alt;
-use nom::bytes::complete::{escaped, is_a, is_not, tag, tag_no_case, take, take_until, take_while};
-use nom::character::complete::{anychar, char, digit1, hex_digit1, none_of, one_of};
-use nom::character::streaming::not_line_ending;
+use nom::bytes::complete::{escaped, is_not, tag, take_until};
+use nom::character::complete::{char};
+
 use nom::combinator::map;
-use nom::error::Error;
-use nom::sequence::{delimited, pair, tuple};
-use nom::{IResult, Parser};
+
+use nom::sequence::{delimited};
+use nom::{IResult};
 use nom_locate::LocatedSpan;
+use std::borrow::ToOwned;
+use std::string::{String, ToString};
+use std::vec::Vec;
 
 use super::escape_code;
 

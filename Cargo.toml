@@ -7,7 +7,7 @@ edition = "2021"
 
 
 [workspace]
-members = ["sap-lang-repl","sap-lang-bin"]
+members = ["sap-lang-repl","sap-lang-bin","sap"]
 
 [profile.release]
 strip = "debuginfo"
@@ -18,5 +18,6 @@ panic = "abort"
 [dependencies]
 nom_locate = { version = "4", features = ["alloc"] }
 nom = { version = "7", features = ["alloc"] }
+
 # rustyline = "9.0.0"
 libfuzzer-sys = { version = "0.4.0", features = ["arbitrary-derive"] }
