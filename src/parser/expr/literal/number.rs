@@ -1,4 +1,3 @@
-use alloc::string::{String, ToString};
 use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case, take_till},
@@ -8,6 +7,7 @@ use nom::{
     IResult,
 };
 use nom_locate::LocatedSpan;
+use std::string::{String, ToString};
 
 use super::Number;
 

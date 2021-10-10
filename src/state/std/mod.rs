@@ -1,30 +1,21 @@
 mod numerical;
 
-use alloc::{
-    borrow::ToOwned,
+use std::cell::UnsafeCell;
+use std::{
     boxed::Box,
     collections::BTreeMap,
-    fmt::format,
     format,
     rc::Rc,
     string::{String, ToString},
     vec,
     vec::Vec,
 };
-use core::cell::UnsafeCell;
 
-use crate::parser::{
-    expr::{literal::Number, CommentedExpr, Expr},
-    ty::Type,
-};
+use crate::parser::{expr::literal::Number, ty::Type};
 
 use self::numerical::add_std_numerical;
 
-use super::{
-    interpreter::{EvalContext, Value},
-    type_checker::TypeCheckContext,
-    Runner,
-};
+use super::{evaluator::value::Value, SapState};
 
 struct NativeFunction {
     name: String,
@@ -168,7 +159,7 @@ unsafe extern "C" fn is_empty(args_count: usize, va: *mut *mut Value) -> UnsafeC
     }
 }
 
-pub fn add_std(r: &mut Runner) {
+pub fn add_std(r: &mut SapState) {
     //numerical
     add_std_numerical(r);
     r.add_and_wrap_native_function(

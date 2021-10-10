@@ -1,15 +1,16 @@
 extern crate alloc;
-use alloc::collections::BTreeMap;
-use alloc::rc::Rc;
-use core::cell::{RefCell, UnsafeCell};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use sap_lang::parse_single_line;
+use sap_lang::parser::top_level::TopLevel;
 use sap_lang::parser::ty::Type;
+use std::cell::{RefCell, UnsafeCell};
+use std::collections::BTreeMap;
+use std::rc::Rc;
 
-use sap_lang::interpreter::interpreter::{eval_expr, EvalContext};
-use sap_lang::interpreter::type_checker::{type_check_expr, TypeCheckContext};
-use sap_lang::interpreter::Runner;
+use sap_lang::state::evaluator::{eval_expr, EvalContext};
+use sap_lang::state::type_checker::{type_check_expr, TypeCheckContext};
+use sap_lang::state::SapState;
 
 fn main() {
     println!("   ____\x1b[1;34m____ \x1b[0m    ___  __                  \x1b[1;32m| Next-GEN Confguration Template Generation Language\x1b[0m");
@@ -23,7 +24,7 @@ fn main() {
     if rl.load_history("history.txt").is_err() {
         println!("No previous history.");
     }
-    let mut runner = Runner::new_with_std();
+    let mut runner = SapState::new_with_std();
 
     'r: loop {
         let mut prompt = "\x1b[1;34msap-lang>>\x1b[0m ";
@@ -64,10 +65,10 @@ fn main() {
                         prompt = "\x1b[1;34msap-lang>>\x1b[0m ";
                         println!("parsed: {}", r);
                         match &r {
-                            sap_lang::parser::TopLevel::Comment(c) => {
+                            TopLevel::Comment(c) => {
                                 println!("comment: {:?}", c)
                             }
-                            sap_lang::parser::TopLevel::Expr(e) => {
+                            TopLevel::Expr(e) => {
                                 let (t, v) = runner.type_check_and_run(r);
                                 match v {
                                     Ok(t) => {
@@ -89,7 +90,7 @@ fn main() {
                                     }
                                 }
                             }
-                            &sap_lang::parser::TopLevel::TypeDef(_, _) => {
+                            &TopLevel::TypeDef(_, _) => {
                                 let (t, _) = runner.type_check_and_run(r);
                                 match t {
                                     Ok(t) => {

@@ -1,33 +1,30 @@
-use alloc::{boxed::Box, collections::BTreeMap, format, rc::Rc, string::String, vec, vec::Vec};
-use core::{
-    borrow::BorrowMut,
-    cell::UnsafeCell,
-    fmt::Debug,
-    ops::{Deref, DerefMut},
-};
-
 pub mod type_checker;
-use crate::parser::{
-    expr::{CommentedExpr, Expr},
-    ty::Type,
-    TopLevel,
+use ::std::{cell::UnsafeCell, collections::BTreeMap, rc::Rc};
+
+use crate::{
+    parser::{
+        expr::{CommentedExpr, Expr},
+        top_level::TopLevel,
+        ty::Type,
+    },
+    state::{evaluator::EvaledImports, type_checker::TypeCheckedImports},
 };
 
 use self::{
-    interpreter::{eval_expr, eval_toplevel, EvalContext, Value},
+    evaluator::{eval_toplevel, value::Value, EvalContext},
     std::add_std,
-    type_checker::{type_check_expr, type_check_toplevel, TypeCheckContext},
+    type_checker::{type_check_toplevel, TypeCheckContext},
 };
 
-pub mod interpreter;
+pub mod evaluator;
 pub mod std;
 
-pub struct Runner {
+pub struct SapState {
     type_check_context: Rc<UnsafeCell<TypeCheckContext>>,
     eval_context: Rc<UnsafeCell<EvalContext>>,
 }
-impl Debug for Runner {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl ::std::fmt::Debug for SapState {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         f.debug_struct("Runner")
             .field("type_check_context", unsafe {
                 &*self.type_check_context.as_ref().get()
@@ -39,16 +36,24 @@ impl Debug for Runner {
     }
 }
 
-impl Runner {
+impl SapState {
     pub fn new() -> Self {
         let type_check_context = Rc::new(UnsafeCell::new(TypeCheckContext {
-            parent: None,
-            free_var: BTreeMap::new(),
-            alias: BTreeMap::new(),
+            type_check_parent_scope: None,
+            type_check_current_scope_variables: BTreeMap::new(),
+            type_check_current_scope_type_alias: BTreeMap::new(),
+            imports: Rc::new(UnsafeCell::new(TypeCheckedImports {
+                imports: BTreeMap::new(),
+            })),
+            current_scope_import_alias: BTreeMap::new(),
         }));
         let eval_context = Rc::new(UnsafeCell::new(EvalContext {
-            parent: None,
-            free_var: BTreeMap::new(),
+            imports: Rc::new(UnsafeCell::new(EvaledImports {
+                imports: BTreeMap::new(),
+            })),
+            current_scope_import_alias: BTreeMap::new(),
+            eval_parent_scope: None,
+            eval_current_scope_variables: BTreeMap::new(),
         }));
         Self {
             type_check_context,
@@ -75,15 +80,15 @@ impl Runner {
         let nname = format!("_{}", name.clone());
         if let Some((a, b)) = type_info {
             unsafe { &mut *self.type_check_context.as_ref().get() }
-                .free_var
+                .type_check_current_scope_variables
                 .insert(name.clone(), Type::Function(a, b));
         } else {
             unsafe { &mut *self.type_check_context.as_ref().get() }
-                .free_var
+                .type_check_current_scope_variables
                 .insert(name.clone(), Type::Any);
         }
         unsafe { &mut *self.eval_context.as_ref().get() }
-            .free_var
+            .eval_current_scope_variables
             .insert(
                 nname.clone(),
                 Rc::new(UnsafeCell::new(Value::NativeFunction(
@@ -94,7 +99,7 @@ impl Runner {
                 ))),
             );
         unsafe { &mut *self.eval_context.as_ref().get() }
-            .free_var
+            .eval_current_scope_variables
             .insert(
                 name.clone(),
                 Rc::new(UnsafeCell::new(Value::Function(

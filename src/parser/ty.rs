@@ -1,14 +1,15 @@
-use alloc::collections::BTreeMap;
+use std::collections::BTreeMap;
 
-use alloc::{boxed::Box, string::String, vec::Vec};
 use nom::{
     branch::alt,
     bytes::complete::tag,
     combinator::{map, opt},
+    multi::separated_list1,
     sequence::tuple,
     IResult,
 };
 use nom_locate::LocatedSpan;
+use std::{boxed::Box, string::String, vec::Vec};
 
 use crate::{
     parser::expr::ident,
@@ -27,10 +28,10 @@ pub enum Type {
     Array,
     Object(BTreeMap<String, Type>),
     Enum(Vec<Type>),
-    Alias(String),
+    Alias(Vec<String>),
 }
-impl core::fmt::Display for Type {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Pair(s, t) => write!(
                 f,
@@ -65,7 +66,15 @@ impl core::fmt::Display for Type {
                 write!(f, "\x1b[1;35m}}\x1b[0m")
             }
             Type::Enum(_) => todo!(),
-            Type::Alias(a) => write!(f, "\x1b[1;36m{}\x1b[0m", a),
+            Type::Alias(a) => {
+                for (n, s) in a.iter().enumerate() {
+                    if n > 0 {
+                        write!(f, "::")?;
+                    }
+                    write!(f, "\x1b[0;36m{}\x1b[0m", s)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -83,7 +92,7 @@ pub fn parse_function_type(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, T
 
 pub fn parse_type(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Type> {
     alt((
-        map(ident, |i| Type::Alias(i)),
+        map(separated_list1(tag("::"), ident), |i| Type::Alias(i)),
         map(tag("any"), |_| Type::Any),
         map(tag("number"), |_| Type::Number),
         map(tag("string"), |_| Type::String),

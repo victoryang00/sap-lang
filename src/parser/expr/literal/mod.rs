@@ -1,12 +1,10 @@
-use alloc::string::String;
 use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_till1},
-    character::complete::one_of,
-    combinator::map,
-    IResult,
+    branch::alt, bytes::complete::tag, character::complete::one_of, combinator::map, IResult,
 };
 use nom_locate::LocatedSpan;
+use std::string::String;
+
+use crate::parser::Parser;
 
 // pub mod array;
 pub mod char;
@@ -23,8 +21,8 @@ pub enum Number {
     Integer(i128),
     Floating(f64),
 }
-impl core::fmt::Display for Number {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Display for Number {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Number::Integer(i) => write!(f, "{}", i),
             Number::Floating(i) => write!(f, "{}", i),
@@ -51,8 +49,8 @@ pub enum Literal {
     Number(Number),
     // Default,
 }
-impl core::fmt::Display for Literal {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl std::fmt::Display for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Literal::Null => write!(f, "\x1b[1;33mnull\x1b[0m"),
             Literal::Bool(b) => write!(f, "\x1b[1;33m{}\x1b[0m", b),
@@ -61,17 +59,20 @@ impl core::fmt::Display for Literal {
         }
     }
 }
-pub fn literal(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Literal> {
-    alt((
-        // map(struct_::struct_, |s| Literal::Struct(s)),
-        // map(array::array, |s| Literal::Array(s)),
-        map(number::number, |s| Literal::Number(s)),
-        map(string::string, |s| Literal::String(s)),
-        //char
-        //byte
-        map(alt((tag("True"), tag("False"))), |s: LocatedSpan<&str>| {
-            Literal::Bool(s.fragment() == &"True")
-        }), // map(tag("Default"), |_| Literal::Default),
-        map(tag("null"), |_| Literal::Null),
-    ))(s)
+
+impl Parser for Literal {
+    fn parse(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Self> {
+        alt((
+            // map(struct_::struct_, |s| Literal::Struct(s)),
+            // map(array::array, |s| Literal::Array(s)),
+            map(number::number, |s| Literal::Number(s)),
+            map(string::string, |s| Literal::String(s)),
+            //char
+            //byte
+            map(alt((tag("True"), tag("False"))), |s: LocatedSpan<&str>| {
+                Literal::Bool(s.fragment() == &"True")
+            }), // map(tag("Default"), |_| Literal::Default),
+            map(tag("null"), |_| Literal::Null),
+        ))(s)
+    }
 }

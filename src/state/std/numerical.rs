@@ -1,10 +1,10 @@
-use core::{cell::UnsafeCell, ops::*};
+use std::{cell::UnsafeCell, ops::*};
 
-use alloc::{boxed::Box, fmt::format, format, string::ToString, vec, vec::Vec};
+use std::{boxed::Box, format, string::ToString, vec, vec::Vec};
 
 use crate::{
-    interpreter::{interpreter::Value, Runner},
     parser::{expr::literal::Number, ty::Type},
+    state::{evaluator::value::Value, SapState},
 };
 
 unsafe extern "C" fn lt(args_count: usize, va: *mut *mut Value) -> UnsafeCell<Value> {
@@ -425,7 +425,7 @@ unsafe extern "C" fn rem(args_count: usize, va: *mut *mut Value) -> UnsafeCell<V
     }
 }
 
-pub(crate) fn add_std_numerical(r: &mut Runner) {
+pub(crate) fn add_std_numerical(r: &mut SapState) {
     r.add_and_wrap_native_function(
         2,
         "lt".to_string(),

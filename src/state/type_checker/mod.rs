@@ -1,47 +1,94 @@
 mod elab;
-use core::cell::UnsafeCell;
 
-use alloc::{boxed::Box, collections::BTreeMap, rc::Rc, string::String, vec, vec::Vec};
+use std::cell::UnsafeCell;
 
+use std::{boxed::Box, collections::BTreeMap, rc::Rc, string::String, vec, vec::Vec};
+
+use crate::parser::top_level::TopLevel;
 use crate::{
-    interpreter::type_checker::elab::type_elab,
     parser::{
         expr::{CommentedExpr, Expr},
         ty::Type,
-        TopLevel,
     },
+    state::type_checker::elab::type_elab,
 };
 
-#[derive(Debug)]
-pub struct TypeCheckContext {
-    pub(crate) parent: Option<Rc<UnsafeCell<TypeCheckContext>>>,
-    pub(crate) free_var: BTreeMap<String, Type>,
-    pub(crate) alias: BTreeMap<String, Type>,
+pub struct TypeCheckedImports {
+    pub imports: BTreeMap<String, Rc<UnsafeCell<TypeCheckContext>>>,
 }
+
+#[derive(Debug, Clone)]
+pub struct TypeCheckContext {
+    pub imports: Rc<UnsafeCell<TypeCheckedImports>>,
+    pub current_scope_import_alias: BTreeMap<String, String>,
+    pub(crate) type_check_parent_scope: Option<Rc<UnsafeCell<TypeCheckContext>>>,
+    pub(crate) type_check_current_scope_variables: BTreeMap<String, Type>,
+    pub(crate) type_check_current_scope_type_alias: BTreeMap<String, Type>,
+}
+
+fn get_var_from_imports(context: Rc<UnsafeCell<TypeCheckContext>>, s: &[String]) -> Option<Type> {
+    let c = unsafe { &*context.get() };
+    match c.current_scope_import_alias.get(&s[0]) {
+        Some(source) => unsafe { &*unsafe { &*c.imports.get() }.imports[&s[0]].get() }
+            .get_variable_type_by_name(&s[1..]),
+        None => get_var_from_imports(c.type_check_parent_scope.as_ref()?.clone(), s),
+    }
+}
+fn get_alias_from_imports(context: Rc<UnsafeCell<TypeCheckContext>>, s: &[String]) -> Option<Type> {
+    let c = unsafe { &*context.get() };
+    match c.current_scope_import_alias.get(&s[0]) {
+        Some(source) => unsafe { &*unsafe { &*c.imports.get() }.imports[&s[0]].get() }
+            .get_variable_type_by_name(&s[1..]),
+        None => get_var_from_imports(c.type_check_parent_scope.as_ref()?.clone(), s),
+    }
+}
+
 impl TypeCheckContext {
-    fn get_alias<'a>(&'a mut self, alias: &'a String) -> Option<Type> {
-        match self.alias.get_mut(alias) {
-            Some(t) => Some(t.clone()),
-            None => match &self.parent {
-                Some(p) => unsafe { &mut *p.get() }.get_alias(alias).clone(),
-                None => None,
-            },
+    fn get_type_alias<'a>(&self, k: &'a [String]) -> Option<Type> {
+        if k.len() == 1 {
+            if self
+                .type_check_current_scope_type_alias
+                .contains_key(k.last().unwrap())
+            {
+                Some(self.type_check_current_scope_type_alias[k.last().unwrap()].clone())
+            } else {
+                if let Some(p) = self.type_check_parent_scope.clone() {
+                    (unsafe { &*p.get() }).get_type_alias(k)
+                } else {
+                    None
+                }
+            }
+        } else {
+            get_alias_from_imports(Rc::new(UnsafeCell::new(self.clone())), k)
         }
     }
-    fn get_free_var<'a>(&'a mut self, fv: &'a String) -> Option<*mut Type> {
-        match self.free_var.get_mut(fv) {
-            Some(t) => Some(t),
-            None => match &self.parent {
-                Some(p) => unsafe { &mut *p.get() }.get_free_var(fv),
-                None => None,
-            },
+
+    fn get_variable_type_by_name(&self, k: &[String]) -> Option<Type> {
+        if k.len() == 1 {
+            if self
+                .type_check_current_scope_variables
+                .contains_key(k.last().unwrap())
+            {
+                Some(self.type_check_current_scope_variables[k.last().unwrap()].clone())
+            } else {
+                if let Some(p) = self.type_check_parent_scope.clone() {
+                    (unsafe { &*p.get() }).get_variable_type_by_name(k)
+                } else {
+                    None
+                }
+            }
+        } else {
+            get_var_from_imports(Rc::new(UnsafeCell::new(self.clone())), k)
         }
     }
-    fn new_with(context: Rc<UnsafeCell<TypeCheckContext>>) -> Self {
+    fn new_type_checking_sub_scope(context: Rc<UnsafeCell<TypeCheckContext>>) -> Self {
         Self {
-            parent: Some(context),
-            free_var: BTreeMap::new(),
-            alias: BTreeMap::new(),
+            imports: unsafe { &*context.get() }.imports.clone(),
+            type_check_parent_scope: Some(context),
+            type_check_current_scope_variables: BTreeMap::new(),
+            type_check_current_scope_type_alias: BTreeMap::new(),
+
+            current_scope_import_alias: BTreeMap::new(),
         }
     }
 }
@@ -54,20 +101,23 @@ pub fn type_check_toplevel(
         TopLevel::Comment(_) => Ok(None),
         TopLevel::TypeDef(s, e) => {
             let clos = type_check_expr(e, context.clone())?;
-            if let Type::Function(_, r) = clos.clone() {
+            if let Type::Function(args, r) = clos.clone() {
                 unsafe { &mut *context.clone().get() }
-                    .free_var
-                    .insert(s.clone(), clos);
+                    .type_check_current_scope_variables
+                    .insert(
+                        s.clone(),
+                        Type::Function(args, Box::new(Type::Alias(vec![s.clone()]))),
+                    );
                 unsafe { &mut *context.clone().get() }
-                    .alias
+                    .type_check_current_scope_type_alias
                     .insert(s.clone(), *r.clone());
-                Ok(Some(*r))
+                Ok(Some(Type::Alias(vec![s.clone()])))
             } else {
                 Err("not f")
             }
         }
         TopLevel::EnumDef(_, _) => todo!(),
-        TopLevel::Import(_, _) => todo!(),
+        TopLevel::ImportPath(_, _) => todo!(),
         TopLevel::Expr(e) => Ok(type_check_expr(&*e, context).ok()),
     }
 }
@@ -76,7 +126,10 @@ pub fn type_check_expr(
     e: &CommentedExpr,
     context: Rc<UnsafeCell<TypeCheckContext>>,
 ) -> Result<Type, &'static str> {
-    let CommentedExpr { comment, expr: e } = e;
+    let CommentedExpr {
+        comment: _,
+        expr: e,
+    } = e;
     match e {
         Expr::Pair(s, e) => Ok(Type::Pair(
             s.clone(),
@@ -84,7 +137,9 @@ pub fn type_check_expr(
         )),
         Expr::Quoted(e) => type_check_expr(e, context),
         Expr::Block(es) => {
-            let ct = Rc::new(UnsafeCell::new(TypeCheckContext::new_with(context.clone())));
+            let ct = Rc::new(UnsafeCell::new(
+                TypeCheckContext::new_type_checking_sub_scope(context.clone()),
+            ));
             let mut tys = es
                 .iter()
                 .map(|e| type_check_toplevel(e, ct.clone()))
@@ -104,13 +159,9 @@ pub fn type_check_expr(
             crate::parser::expr::literal::Literal::Number(_) => Ok(Type::Number),
         },
         Expr::Ident(i) => {
-            if i.len() > 1 {
-                unimplemented!()
-            } else {
-                match unsafe { &mut *context.get() }.get_free_var(i.get(0).unwrap()) {
-                    Some(fv) => Ok(unsafe { &mut *fv }.clone()),
-                    None => Ok(Type::Any),
-                }
+            match unsafe { &mut *context.get() }.get_variable_type_by_name(i.as_slice()) {
+                Some(fv) => Ok(fv.clone()),
+                None => Ok(Type::Any),
             }
         }
         Expr::Array(_) => Ok(Type::Array),
@@ -125,16 +176,18 @@ pub fn type_check_expr(
             Ok(Type::Object(b))
         }
         Expr::Closure(a, b, c) => {
-            let ct = Rc::new(UnsafeCell::new(TypeCheckContext::new_with(context.clone())));
+            let ct = Rc::new(UnsafeCell::new(
+                TypeCheckContext::new_type_checking_sub_scope(context.clone()),
+            ));
             let mut aa = vec![];
             for (k, v) in a {
                 aa.push(v.clone().unwrap_or(Type::Any));
                 unsafe { &mut *ct.get() }
-                    .free_var
+                    .type_check_current_scope_variables
                     .insert(k.clone(), v.clone().unwrap_or(Type::Any));
             }
 
-            let mut bb = type_check_expr(c, ct)?;
+            let bb = type_check_expr(c, ct)?;
 
             Ok(Type::Function(
                 aa,
@@ -142,13 +195,13 @@ pub fn type_check_expr(
             ))
         }
         Expr::If(a, b, c) => {
-            let mut aa = type_check_expr(a, context.clone())?;
-            let mut bb = type_check_expr(b, context.clone())?;
-            let mut cc = type_check_expr(c, context.clone())?;
+            let aa = type_check_expr(a, context.clone())?;
+            let bb = type_check_expr(b, context.clone())?;
+            let cc = type_check_expr(c, context.clone())?;
             let _ = type_elab(context.clone(), aa, Type::Bool)?;
             type_elab(context, bb, cc)
         }
-        Expr::MultiIf(a, b) => todo!(),
+        Expr::MultiIf(_a, _b) => todo!(),
         Expr::For(_, _, _) => Ok(Type::Any),
         Expr::Call(func, args) => {
             let aaa = type_check_expr(func, context.clone())?;
@@ -169,7 +222,7 @@ pub fn type_check_expr(
                             .collect::<Vec<_>>();
                         Ok(Type::Function(args, b))
                     } else if a.len() < bbbs.len() {
-                        if let box f @ Type::Function(_, _) = b {
+                        if let box _f @ Type::Function(_, _) = b {
                             let mut expr = CommentedExpr::from_expr(Expr::Call(
                                 Box::new(CommentedExpr::from_expr(Expr::Call(
                                     func.clone(),
@@ -204,12 +257,12 @@ pub fn type_check_expr(
         Expr::ErrorHandle(e) => type_check_expr(e, context),
         // TODO: FUCK ME
         Expr::Bind(ba, bb) => {
-            let mut aaa = type_check_expr(ba, context.clone())?;
-            let mut bbb = type_check_expr(bb, context.clone())?;
+            let aaa = type_check_expr(ba, context.clone())?;
+            let bbb = type_check_expr(bb, context.clone())?;
             match bbb {
                 Type::Any => Ok(Type::Any),
-                Type::Function(mut a, b) => match aaa {
-                    Type::Function(aa, mut bb) => {
+                Type::Function(a, _b) => match aaa {
+                    Type::Function(aa, bb) => {
                         if a.len() < 1 {
                             type_check_expr(
                                 &mut CommentedExpr::from_expr(Expr::Call(ba.clone(), vec![])),
@@ -223,50 +276,46 @@ pub fn type_check_expr(
                             type_elab(context, *bb, a[0].clone())
                         }
                     }
-                    mut nonf => type_check_expr(
+                    _nonf => type_check_expr(
                         &mut CommentedExpr::from_expr(Expr::Call(bb.clone(), vec![*ba.clone()])),
                         context,
                     ),
                 },
-                Type::Alias(a) => {
+                Type::Alias(_a) => {
                     todo!()
                 }
                 _ => Err("not bindable"),
             }
         }
         // TODO: elab index
-        Expr::Index(a, b) => Ok(Type::Any),
+        Expr::Index(_a, _b) => Ok(Type::Any),
         Expr::Assign(a, b) => {
-            let mut aaa = type_check_expr(a, context.clone())?;
+            let aaa = type_check_expr(a, context.clone())?;
 
             if let box CommentedExpr {
-                comment,
+                comment: _,
                 expr: Expr::Ident(aa),
             } = a
             {
-                if aa.len() > 1 {
-                    unimplemented!()
-                } else {
-                    match unsafe { &mut *context.get() }.get_free_var(aa.get(0).unwrap()) {
-                        Some(fv) => {
-                            unsafe { &mut *context.get() }
-                                .free_var
-                                .insert(aa[0].clone(), Type::Any);
-                            let mut bbb = type_check_expr(b, context.clone())?;
-                            let r = type_elab(context.clone(), aaa, bbb.clone())?;
-                            unsafe { &mut *context.get() }
-                                .free_var
-                                .insert(aa[0].clone(), r.clone());
-                            Ok(r)
-                        }
-                        None => {
-                            let mut bbb = type_check_expr(b, context.clone())?;
-                            let r = type_elab(context.clone(), Type::Any, bbb.clone())?;
-                            unsafe { &mut *context.get() }
-                                .free_var
-                                .insert(aa[0].clone(), r.clone());
-                            Ok(r)
-                        }
+                match unsafe { &mut *context.get() }.get_variable_type_by_name(aa.as_slice()) {
+                    Some(_fv) => {
+                        unsafe { &mut *context.get() }
+                            .type_check_current_scope_variables
+                            .insert(aa[0].clone(), Type::Any);
+                        let bbb = type_check_expr(b, context.clone())?;
+                        let r = type_elab(context.clone(), aaa, bbb.clone())?;
+                        unsafe { &mut *context.get() }
+                            .type_check_current_scope_variables
+                            .insert(aa[0].clone(), r.clone());
+                        Ok(r)
+                    }
+                    None => {
+                        let bbb = type_check_expr(b, context.clone())?;
+                        let r = type_elab(context.clone(), Type::Any, bbb.clone())?;
+                        unsafe { &mut *context.get() }
+                            .type_check_current_scope_variables
+                            .insert(aa[0].clone(), r.clone());
+                        Ok(r)
                     }
                 }
             } else {
@@ -274,7 +323,7 @@ pub fn type_check_expr(
             }
         }
         Expr::SpecifyTyped(ex, ty) => {
-            let mut tyy = type_check_expr(ex, context.clone())?;
+            let tyy = type_check_expr(ex, context.clone())?;
             type_elab(context, tyy, ty.clone())
         }
     }

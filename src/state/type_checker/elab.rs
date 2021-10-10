@@ -1,12 +1,8 @@
-use core::cell::UnsafeCell;
+use std::cell::UnsafeCell;
 
-use alloc::{boxed::Box, collections::BTreeMap, rc::Rc, vec};
+use std::{boxed::Box, collections::BTreeMap, rc::Rc, vec};
 
-use crate::parser::{
-    expr::{CommentedExpr, Expr},
-    ty::Type,
-    TopLevel,
-};
+use crate::parser::ty::Type;
 
 use super::TypeCheckContext;
 
@@ -18,12 +14,18 @@ pub fn type_elab(
     match (a.clone(), b.clone()) {
         (Type::Any, _) => Ok(b),
         (_, Type::Any) => Ok(a),
-        (_, Type::Alias(alias)) => match unsafe { &mut *context.get() }.get_alias(&alias) {
-            Some(b) => type_elab(context, a, b),
+        (_, Type::Alias(alias)) => match unsafe { &mut *context.get() }.get_type_alias(&alias) {
+            Some(bb) => {
+                type_elab(context, a, bb)?;
+                Ok(b)
+            }
             None => Err("type mismatch"),
         },
-        (Type::Alias(alias), b) => match unsafe { &mut *context.get() }.get_alias(&alias) {
-            Some(a) => type_elab(context, a, b),
+        (Type::Alias(alias), b) => match unsafe { &mut *context.get() }.get_type_alias(&alias) {
+            Some(aa) => {
+                type_elab(context, aa, b)?;
+                Ok(a)
+            }
             None => Err("type mismatch"),
         },
         // number
@@ -38,7 +40,7 @@ pub fn type_elab(
         // function
         (Type::Function(args1, ret1), Type::Function(args2, ret2)) => {
             match args1.len().cmp(&args2.len()) {
-                core::cmp::Ordering::Equal => {
+                std::cmp::Ordering::Equal => {
                     let mut args = vec![];
                     for i in 0..args1.len() {
                         args.push(type_elab(
@@ -97,7 +99,7 @@ pub fn type_elab(
                 Err("type mismatch")
             }
         }
-        (a, b) => {
+        (_a, _b) => {
             // todo!("what happend with {:?} {:?}", a, b)
             Ok(Type::Any)
         }
