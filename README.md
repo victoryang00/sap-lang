@@ -55,7 +55,6 @@ a = 10
 ## strong type?
 YES!
 
-
 ## type definision
 ```
 type typed = (name){{name}}
@@ -75,15 +74,8 @@ tyvar = enum::full(name,age,location)
 tyvar[name] = "string"
 
 # to validate if is a variant of an enum
-is({name,age,location},enum::full) # true
 
-# why I have to write twice?
-type enum = 
-    | name: octor(name)
-    | aged: octor(name,age)
-    | full: octor(name,age,location)
-
-# octor is short cut of object constructor
+TODO
 ```
 
 ## function
@@ -126,7 +118,7 @@ for a in [] {
 
 }
 
-for a in range 0 10{
+for a in range(0,10){
 
 }
 ```
@@ -142,9 +134,6 @@ f.g.f.g.f.g.f(10) # 10 . is bind
 
 id = f.g
 ```
-### UFC
-expr as first parameter
-function typed output as first parameter
 
 ## error handling
 ```
