@@ -13,23 +13,38 @@ use super::Number;
 
 fn hex(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Number> {
     fn str2i(s: LocatedSpan<&str>) -> i128 {
-        i128::from_str_radix(&s[2..], 16).unwrap()
+        if let Ok(x) = i128::from_str_radix(&s[2..], 16) {
+            x
+        } else {
+            0
+        }
     }
-    map(recognize(tuple((tag_no_case("0x"), hex_digit1))), |s| {
-        Number::Integer(str2i(s))
-    })(s)
+    map(
+        map(
+            recognize(tuple((tag_no_case("0x"), opt(hex_digit1)))),
+            str2i,
+        ),
+        |s| Number::Integer(s),
+    )(s)
 }
 
 fn bin(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Number> {
     fn str2i(s: LocatedSpan<&str>) -> i128 {
-        i128::from_str_radix(&s[2..], 2).unwrap()
+        if let Ok(x) = i128::from_str_radix(&s[2..], 2) {
+            x
+        } else {
+            0
+        }
     }
     map(
-        recognize(tuple((
-            tag_no_case("0b"),
-            take_till(|c| c != '0' && c != '1'),
-        ))),
-        |s| Number::Integer(str2i(s)),
+        map(
+            recognize(tuple((
+                tag_no_case("0b"),
+                take_till(|c| c != '0' && c != '1'),
+            ))),
+            str2i,
+        ),
+        |s| Number::Integer(s),
     )(s)
 }
 
