@@ -8,7 +8,7 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     combinator::{map, opt},
-    multi::separated_list1,
+    multi::{many1, separated_list1},
     sequence::tuple,
     IResult,
 };
@@ -44,12 +44,12 @@ pub enum Expr {
     MultiIf(Vec<(CommentedExpr, CommentedExpr)>, Box<CommentedExpr>),
     For(String, Box<CommentedExpr>, Box<CommentedExpr>),
     // ll
-    Call(Box<CommentedExpr>, Vec<CommentedExpr>),
     ErrorHandle(Box<CommentedExpr>),
-    Bind(Box<CommentedExpr>, Box<CommentedExpr>),
-    Index(Box<CommentedExpr>, Box<CommentedExpr>),
-    Assign(Box<CommentedExpr>, Box<CommentedExpr>),
     SpecifyTyped(Box<CommentedExpr>, Type),
+    Index(Box<CommentedExpr>, Box<CommentedExpr>),
+    Bind(Box<CommentedExpr>, Box<CommentedExpr>),
+    Call(Box<CommentedExpr>, Vec<CommentedExpr>),
+    Assign(Box<CommentedExpr>, Box<CommentedExpr>),
 }
 
 impl std::fmt::Display for Expr {
@@ -177,11 +177,22 @@ impl std::fmt::Display for CommentedExpr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CommentedExpr {
     pub comment: Option<String>,
     pub expr: Expr,
 }
+
+impl std::fmt::Debug for CommentedExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(comment) = &self.comment {
+            write!(f, "{:?} {:?}", comment.lines(), self.expr)
+        } else {
+            write!(f, "{:?}", self.expr)
+        }
+    }
+}
+
 impl CommentedExpr {
     pub fn from_expr(expr: Expr) -> Self {
         Self {
@@ -399,6 +410,7 @@ fn q(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, LocatedSpan<&str>> {
 fn type_specifier(s: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, Type> {
     map(tuple((tag(":"), opt(ws), parse_type)), |(_, _, ty)| ty)(s)
 }
+
 fn expr_ll(l: CommentedExpr, r: LocatedSpan<&str>) -> IResult<LocatedSpan<&str>, CommentedExpr> {
     let (r, (comment, _)) = tuple((opt(parse_comments), opt(ws)))(r)?;
     if let Ok((r, _)) = q(r) {
@@ -505,19 +517,19 @@ pub fn reverse_bind(e: CommentedExpr) -> CommentedExpr {
                     comment: c2,
                     expr: Expr::Bind(b, c),
                 },
-            ) => reverse_bind_expr(Expr::Bind(
-                Box::new(CommentedExpr {
+            ) => Expr::Bind(
+                Box::new(reverse_bind(CommentedExpr {
                     comment: c2,
                     expr: Expr::Bind(
                         Box::new(CommentedExpr {
                             comment: c1,
                             expr: a,
                         }),
-                        b,
+                        Box::new(reverse_bind(*b)),
                     ),
-                }),
-                c,
-            )),
+                })),
+                Box::new(reverse_bind(*c)),
+            ),
             Expr::Index(a, b) => {
                 Expr::Index(Box::new(reverse_bind(*a)), Box::new(reverse_bind(*b)))
             }
@@ -606,12 +618,13 @@ fn test_expr() {
         "a::b::c()?.a::d",
         "a : (number,number) -> number = 1",
         "(a:number)->number {1; a[1]; if 1 {2} else {3}}",
+        "a.b.c.d",
     ];
     for e in exprs {
-        let _r = CommentedExpr::parse(LocatedSpan::from(e));
-        // assert!(r.is_ok());
-        // let (r0, r1) = r.unwrap();
-        // assert_eq!(r0, "");
-        // println!("{:?}\n", r);
+        let r = CommentedExpr::parse(LocatedSpan::from(e));
+        assert!(r.is_ok());
+        let (r0, r1) = r.unwrap();
+        // assert_eq!(, "");
+        println!("{:?}\n", r1);
     }
 }
